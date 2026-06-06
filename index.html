@@ -55,7 +55,26 @@
   .pick-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .icon-btn{background:transparent;border:none;font-size:16px;cursor:pointer;padding:2px 4px;color:var(--accent)}
   #dateInput{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
-  input[type=time].time-wheel{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:110px;text-align:center;background:#fff;font-size:16px}
+  button.time-wheel{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:110px;text-align:center;background:#fff;font-size:16px;cursor:pointer;color:var(--text)}
+  /* Custom wheel picker */
+  .tp-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+  .tp-sheet{background:#fff;border-radius:16px;width:100%;max-width:340px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+  .tp-title{padding:16px;text-align:center;font-weight:600;color:var(--accent);border-bottom:1px solid var(--line);font-size:16px}
+  .tp-cols{position:relative;display:grid;grid-template-columns:1fr 1fr;padding:8px 0 0;height:236px}
+  .tp-col-label{position:absolute;top:8px;font-size:13px;color:var(--muted);text-align:center;width:50%;font-weight:500}
+  .tp-col-label:nth-child(1){left:0}.tp-col-label:nth-child(2){left:50%}
+  .tp-col{height:200px;margin-top:24px;overflow-y:scroll;scroll-snap-type:y mandatory;text-align:center;-webkit-overflow-scrolling:touch}
+  .tp-col::-webkit-scrollbar{display:none}
+  .tp-col{scrollbar-width:none}
+  .tp-item{height:40px;line-height:40px;font-size:20px;color:var(--muted);scroll-snap-align:center;font-variant-numeric:tabular-nums}
+  .tp-item.selected{color:var(--text);font-weight:600}
+  .tp-highlight{position:absolute;top:calc(24px + 80px);left:0;right:0;height:40px;background:rgba(15,98,254,.08);border-top:1px solid var(--accent);border-bottom:1px solid var(--accent);pointer-events:none}
+  .tp-actions{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+  .tp-actions button{padding:14px;border:none;background:transparent;font:inherit;font-size:16px;cursor:pointer}
+  .tp-cancel{color:var(--muted);border-right:1px solid var(--line)}
+  .tp-ok{color:var(--accent);font-weight:600}
+  /* Person remove */
+  .person-remove{background:transparent;border:1px solid var(--line);border-radius:50%;width:24px;height:24px;font-size:11px;color:var(--warn);cursor:pointer;padding:0;line-height:1}
   .hh-stepper{display:flex;align-items:center;gap:6px;justify-content:flex-end}
   .hh-stepper input[type=number]{width:60px;padding:6px;text-align:center;font:inherit;border:1px solid var(--line);border-radius:6px}
   .hh-stepper button{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:18px;font:inherit;cursor:pointer}
@@ -116,7 +135,25 @@
   <div class="small" style="margin-bottom:6px">點員工 + 展開填工時，「其他」可手填名字</div>
 
   <div id="personList"></div>
-  <button id="addOther" type="button">+ 其他（手填）</button>
+  <button id="addOther" type="button">+ 其他人員（手填）</button>
+</div>
+
+<!-- Custom wheel time picker modal -->
+<div id="timePickerModal" class="tp-modal" style="display:none">
+  <div class="tp-sheet">
+    <div class="tp-title">選擇時間</div>
+    <div class="tp-cols">
+      <div class="tp-col-label">時</div>
+      <div class="tp-col-label">分</div>
+      <div class="tp-col" id="tpHours"></div>
+      <div class="tp-col" id="tpMinutes"></div>
+      <div class="tp-highlight"></div>
+    </div>
+    <div class="tp-actions">
+      <button type="button" class="tp-cancel" onclick="closeTimePicker(false)">取消</button>
+      <button type="button" class="tp-ok" onclick="closeTimePicker(true)">確定</button>
+    </div>
+  </div>
 </div>
 
 <div id="errBox" class="err"></div>
@@ -242,14 +279,15 @@ function buildPersonTile(name, group, isOther){
   tile.dataset.name = name;
   tile.dataset.group = group;
   if (isOther) tile.dataset.other = '1';
-  tile.innerHTML = `<div class="name">${name}</div><div class="plus">+</div>`;
+  const removeBtn = isOther ? `<button type="button" class="person-remove" title="刪除">✕</button>` : '';
+  tile.innerHTML = `<div class="name">${name}</div><div style="display:flex;align-items:center;gap:6px">${removeBtn}<div class="plus">+</div></div>`;
 
   const fields = document.createElement('div');
   fields.className = 'person-fields';
   const otherInput = isOther ? `
     <div class="field" style="grid-column:1/-1">
       <label>姓名</label>
-      <input type="text" data-k="name" value="${name === '其他' ? '' : name}" placeholder="手填姓名">
+      <input type="text" data-k="name" value="${name === '其他人員' ? '' : name}" placeholder="手填姓名">
     </div>` : '';
   fields.innerHTML = `
     <div class="grid">
@@ -308,9 +346,10 @@ function buildPersonTile(name, group, isOther){
 }
 
 function timeWheelInput(k){
-  // Use native time input → renders as wheel picker on iOS/Android
+  // Custom wheel-picker triggered by tapping a styled button.
+  // Stores value in data-k attribute on the hidden input; display in the button.
   const def = k === 'start' ? "09:00" : "20:00";
-  return `<input type="time" step="1800" value="${def}" data-k="${k}" class="time-wheel">`;
+  return `<button type="button" class="time-wheel" data-k="${k}" data-val="${def}" onclick="openTimePicker(this)">${def}</button>`;
 }
 function halfHourStepper(k){
   return `<div class="hh-stepper">
@@ -320,6 +359,71 @@ function halfHourStepper(k){
     <button type="button" data-act="plus" data-k="${k}">＋</button>
   </div>`;
 }
+// === Custom wheel time picker ===
+let _tpTarget = null;
+function openTimePicker(btn){
+  _tpTarget = btn;
+  const cur = (btn.dataset.val || '09:00').split(':');
+  const curH = parseInt(cur[0], 10) || 0;
+  const curM = parseInt(cur[1], 10) || 0;
+  const hours = document.getElementById('tpHours');
+  const minutes = document.getElementById('tpMinutes');
+  hours.innerHTML = ''; minutes.innerHTML = '';
+  // Add top + bottom padding (2 items each side so selected is centered)
+  for (let i = 0; i < 2; i++){
+    hours.innerHTML += '<div class="tp-item"></div>';
+    minutes.innerHTML += '<div class="tp-item"></div>';
+  }
+  for (let h = 0; h <= 23; h++){
+    hours.innerHTML += `<div class="tp-item" data-v="${h}">${String(h).padStart(2,'0')}</div>`;
+  }
+  // 0.5 step → minutes 00, 30
+  [0, 30].forEach(m=>{
+    minutes.innerHTML += `<div class="tp-item" data-v="${m}">${String(m).padStart(2,'0')}</div>`;
+  });
+  for (let i = 0; i < 2; i++){
+    hours.innerHTML += '<div class="tp-item"></div>';
+    minutes.innerHTML += '<div class="tp-item"></div>';
+  }
+  document.getElementById('timePickerModal').style.display = 'flex';
+  // Scroll to selected after modal visible
+  requestAnimationFrame(()=>{
+    hours.scrollTop = curH * 40;
+    minutes.scrollTop = (curM === 30 ? 1 : 0) * 40;
+    markSelected();
+  });
+  hours.onscroll = markSelected;
+  minutes.onscroll = markSelected;
+}
+function markSelected(){
+  ['tpHours','tpMinutes'].forEach(id=>{
+    const col = document.getElementById(id);
+    const idx = Math.round(col.scrollTop / 40);
+    col.querySelectorAll('.tp-item').forEach((el,i)=>{
+      el.classList.toggle('selected', i === idx + 2);
+    });
+  });
+}
+function closeTimePicker(commit){
+  if (commit && _tpTarget){
+    const hCol = document.getElementById('tpHours');
+    const mCol = document.getElementById('tpMinutes');
+    const hIdx = Math.round(hCol.scrollTop / 40);
+    const mIdx = Math.round(mCol.scrollTop / 40);
+    const hEl = hCol.querySelectorAll('.tp-item')[hIdx + 2];
+    const mEl = mCol.querySelectorAll('.tp-item')[mIdx + 2];
+    const h = hEl && hEl.dataset.v != null ? parseInt(hEl.dataset.v, 10) : 9;
+    const m = mEl && mEl.dataset.v != null ? parseInt(mEl.dataset.v, 10) : 0;
+    const val = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    _tpTarget.dataset.val = val;
+    _tpTarget.textContent = val;
+  }
+  document.getElementById('timePickerModal').style.display = 'none';
+  _tpTarget = null;
+}
+window.openTimePicker = openTimePicker;
+window.closeTimePicker = closeTimePicker;
+
 function fmtT(v){
   // accept either "HH:MM" or numeric hours
   if (typeof v === 'string' && v.includes(':')) return v;
@@ -395,8 +499,16 @@ function attachHandlers(){
   });
   document.getElementById('addOther').addEventListener('click', ()=>{
     const host = document.getElementById('personList');
-    const w = buildPersonTile('其他', '兼職', true);
+    const w = buildPersonTile('其他人員', '兼職', true);
     host.appendChild(w);
+    // Wire delete button + ensure click doesn't toggle parent
+    const tile = w.querySelector('.person-tile');
+    const rmBtn = tile && tile.querySelector('.person-remove');
+    if (rmBtn) rmBtn.addEventListener('click', ev=>{
+      ev.stopPropagation();
+      w.remove();
+      validate();
+    });
   });
   document.getElementById('btnSubmit').addEventListener('click', submit);
 }
@@ -421,8 +533,8 @@ function collect(){
       const inp = fields.querySelector('input[data-k="name"]');
       if (inp && inp.value.trim()) name = inp.value.trim();
     }
-    const startStr = fields.querySelector('input[data-k="start"]').value;
-    const endStr = fields.querySelector('input[data-k="end"]').value;
+    const startStr = (fields.querySelector('[data-k="start"]').dataset.val) || (fields.querySelector('[data-k="start"]').value) || '09:00';
+    const endStr = (fields.querySelector('[data-k="end"]').dataset.val) || (fields.querySelector('[data-k="end"]').value) || '20:00';
     const start = timeToFloat(startStr);
     const end = timeToFloat(endStr);
     const restEl = fields.querySelector('input[data-k="rest"]');
