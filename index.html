@@ -409,6 +409,14 @@ function renderMealFields(m){
 }
 
 // === Persons ===
+function getDefaultSchedule(){
+  return (employees && employees.default_schedule) || { start:'08:00', end:'17:00' };
+}
+function normalizeMember(member){
+  if (typeof member === 'string') return { name: member };
+  return member;
+}
+
 function renderPersons(){
   const host = document.getElementById('personList');
   host.innerHTML = "";
@@ -417,11 +425,14 @@ function renderPersons(){
     lbl.className = 'grp-label';
     lbl.textContent = g.label;
     host.appendChild(lbl);
-    g.members.forEach(name => host.appendChild(buildPersonTile(name, g.label, false)));
+    g.members.forEach(member => {
+      const norm = normalizeMember(member);
+      host.appendChild(buildPersonTile(norm.name, g.label, false, norm.schedule));
+    });
   });
 }
 
-function buildPersonTile(name, group, isOther){
+function buildPersonTile(name, group, isOther, schedule){
   const tile = document.createElement('div');
   tile.className = 'person-tile';
   tile.dataset.name = name;
@@ -444,11 +455,12 @@ function buildPersonTile(name, group, isOther){
         <button type="button" data-grp="兼職" class="${group==='兼職'?'on':''}">兼職</button>
       </div>
     </div>` : '';
+  const sched = schedule || getDefaultSchedule();
   fields.innerHTML = `
     <div class="grid">
       ${otherInput}
-      <div class="field"><label>上班</label>${timeWheelInput('start')}</div>
-      <div class="field"><label>下班</label>${timeWheelInput('end')}</div>
+      <div class="field"><label>上班</label>${timeWheelInput('start', sched.start)}</div>
+      <div class="field"><label>下班</label>${timeWheelInput('end', sched.end)}</div>
       <div class="field"><label>休息（小時）</label>${halfHourStepper('rest')}</div>
     </div>
     <div class="ot-wrap">
@@ -500,10 +512,8 @@ function buildPersonTile(name, group, isOther){
   return wrapper;
 }
 
-function timeWheelInput(k){
-  // Custom wheel-picker triggered by tapping a styled button.
-  // Stores value in data-k attribute on the hidden input; display in the button.
-  const def = k === 'start' ? "09:00" : "20:00";
+function timeWheelInput(k, defaultVal){
+  const def = defaultVal || (k === 'start' ? '08:00' : '17:00');
   return `<button type="button" class="time-wheel" data-k="${k}" data-val="${def}" onclick="openTimePicker(this)">${def}</button>`;
 }
 function halfHourStepper(k){
@@ -684,7 +694,7 @@ function attachHandlers(){
   document.getElementById('addOther').addEventListener('click', ()=>{
     const host = document.getElementById('personList');
     // Default to 兼職; user can switch via inline toggle
-    const w = buildPersonTile('其他人員', '兼職', true);
+    const w = buildPersonTile('其他人員', '兼職', true, getDefaultSchedule());
     host.appendChild(w);
     const tile = w.querySelector('.person-tile');
     const rmBtn = tile && tile.querySelector('.person-remove');

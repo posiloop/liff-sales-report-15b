@@ -1,21 +1,22 @@
 {
   "site": "中科台積電15B",
   "updated": "2026-06-06",
+  "default_schedule": { "start": "08:00", "end": "17:00" },
   "groups": [
     {
       "label": "正職",
       "members": [
-        "盧建全",
-        "陳怡安",
-        "黃英杰"
+        { "name": "盧建全" },
+        { "name": "陳怡安" },
+        { "name": "黃英杰" }
       ]
     },
     {
       "label": "兼職",
       "members": [
-        "林文鍵",
-        "陳阿欵",
-        "李志堉"
+        { "name": "林文鍵", "schedule": { "start": "08:00", "end": "13:00" } },
+        { "name": "陳阿欵", "schedule": { "start": "09:00", "end": "17:00" } },
+        { "name": "李志堉" }
       ]
     }
   ]
