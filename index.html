@@ -1038,7 +1038,8 @@ async function submit(){
             action:'submit',
             date: d.date, ym: STATE.ym, site: d.site,
             reporter: d.reporter, userId: profile.userId || '',
-            dayAmt: d.dayAmt, dayHours: d.dayHours
+            dayAmt: d.dayAmt, dayHours: d.dayHours,
+            meals: d.meals, persons: d.persons   // 完整明細存進 sheet (v30 — D 方案)
           })
         });
         const j = await r.json();
