@@ -370,17 +370,18 @@ function buildFlex(d){
       { type:'text', text:`$${m.amount.toLocaleString('zh-TW')}`, size:'sm', flex:3, align:'end', weight:'bold' }
     ]
   }));
-  const personRows = d.persons.map(p => ({
-    type:'box', layout:'vertical',
-    contents:[
-      { type:'box', layout:'horizontal', contents:[
-        { type:'text', text:`${p.name}`, size:'sm', flex:3, weight:'bold' },
-        { type:'text', text:`[${p.group}]`, size:'xs', flex:2, align:'end', color:'#8a8a8e' }
-      ]},
-      { type:'text', text:`${fmtT(p.start)}-${fmtT(p.end)}（休${p.rest} / 加${p.ot}） 工時 ${p.worked.toFixed(1)}h`, size:'xs', color:'#6e6e73', wrap:true }
-    ],
-    paddingTop:'4px'
-  }));
+  const personRows = d.persons
+    .filter(p => p.name && p.name.trim())
+    .map(p => ({
+      type:'box', layout:'vertical', margin:'sm',
+      contents:[
+        { type:'box', layout:'horizontal', contents:[
+          { type:'text', text: String(p.name), size:'sm', flex:3, weight:'bold' },
+          { type:'text', text: '[' + String(p.group||'') + ']', size:'xs', flex:2, align:'end', color:'#8a8a8e' }
+        ]},
+        { type:'text', text: fmtT(p.start) + '-' + fmtT(p.end) + '（休' + p.rest + ' / 加' + p.ot + '） 工時 ' + p.worked.toFixed(1) + 'h', size:'xs', color:'#6e6e73', wrap:true }
+      ]
+    }));
   return {
     type:'bubble', size:'mega',
     header:{ type:'box', layout:'vertical', backgroundColor:'#06c755', paddingAll:'14px', contents:[
@@ -417,22 +418,33 @@ function buildFlex(d){
 }
 
 async function submit(){
+  const errBox = document.getElementById('errBox');
+  errBox.textContent = "";
   try{
     const d = collect();
     const flex = buildFlex(d);
-    if (liff && liff.sendMessages){
-      await liff.sendMessages([{ type:'flex', altText:`業績回報 - ${d.date}`, contents: flex }]);
-      // commit monthly state
-      setMonth(getMonth() + d.dayAmt);
-      const btn = document.getElementById('btnSubmit');
-      btn.textContent = "✓ 已送出";
-      btn.disabled = true;
-      setTimeout(()=>{ try{ liff.closeWindow(); } catch(e){} }, 800);
-    } else {
-      document.getElementById('errBox').textContent = "LIFF SDK 未載入，無法送出";
+    if (!liff || !liff.sendMessages){
+      errBox.textContent = "LIFF SDK 未載入，無法送出";
+      return;
     }
+    const payload = [{ type:'flex', altText: ('業績回報 - ' + d.date).slice(0, 400), contents: flex }];
+    try{
+      await liff.sendMessages(payload);
+    } catch(sendErr){
+      // log full payload to help debug
+      console.error('sendMessages failed', sendErr, JSON.stringify(payload));
+      errBox.innerHTML = '送出失敗：' + (sendErr.code || '') + ' ' + (sendErr.message || sendErr) +
+        '<br><small>診斷：在這頁手機按住 → 在控制台看 console.error，或截圖回 Claude</small>';
+      return;
+    }
+    setMonth(getMonth() + d.dayAmt);
+    const btn = document.getElementById('btnSubmit');
+    btn.textContent = "✓ 已送出";
+    btn.disabled = true;
+    setTimeout(()=>{ try{ liff.closeWindow(); } catch(e){} }, 800);
   } catch(e){
-    document.getElementById('errBox').textContent = "送出失敗：" + (e.message || e);
+    console.error('submit error', e);
+    errBox.textContent = "送出失敗：" + (e.message || e);
   }
 }
 
