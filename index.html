@@ -150,6 +150,18 @@
 </div>
 
 <div class="card">
+  <h2>⏰ 工時</h2>
+  <div class="row"><label>今日總工時</label><div class="val" id="dayHoursDisp">--</div></div>
+  <div class="monthly-row">
+    <div>
+      <div class="small">本月（含今日）累積工時</div>
+      <div class="val" id="monthHoursSum" style="font-size:18px">--</div>
+    </div>
+    <button id="fixMonthHours">修正</button>
+  </div>
+</div>
+
+<div class="card">
   <h2>💰 當月營業額</h2>
   <div class="monthly-row">
     <div>
@@ -170,6 +182,22 @@
 
   <div id="personList"></div>
   <button id="addOther" type="button">+ 其他人員</button>
+</div>
+
+<!-- Number-keyboard input modal -->
+<div id="numInputModal" class="tp-modal" style="display:none">
+  <div class="tp-sheet" style="max-width:320px">
+    <div class="tp-title" id="numInputTitle">輸入數字</div>
+    <div style="padding:18px">
+      <input id="numInputField" type="number" inputmode="decimal" pattern="[0-9]*"
+             style="width:100%;padding:14px;font-size:22px;text-align:right;border:1px solid var(--line);border-radius:10px;font:inherit"
+             placeholder="0">
+    </div>
+    <div class="tp-actions">
+      <button type="button" class="tp-cancel" onclick="closeNumberInput(false)">取消</button>
+      <button type="button" class="tp-ok" onclick="closeNumberInput(true)">確定</button>
+    </div>
+  </div>
 </div>
 
 <!-- Records management modal -->
@@ -266,14 +294,24 @@ function updateDate(d){
   STATE = rocFromDate(d);
   MONTH_KEY = "monthly_total_" + STATE.ym;
   serverMonthCache = null;
+  serverHoursCache = null;
   document.getElementById('dateText').textContent = STATE.roc;
   document.getElementById('hdrSub').textContent = STATE.roc;
   document.getElementById('dateInput').value = STATE.iso;
+  // Reset all user inputs on date change (per建全)
+  resetAllFields();
   // Re-render meals so 燃肌餐 displays the correct day-of-week pricing
   renderMeals();
+  renderPersons();
   // Refresh server month
   fetchMonth(STATE.ym).then(v=>{ if (v != null) serverMonthCache = v; recalc(); });
   recalc();
+}
+
+function resetAllFields(){
+  document.getElementById('guestCount').value = '';
+  // Person list will be re-rendered, so just clear remove-able "其他人員" tiles indirectly
+  // by calling renderPersons (caller does it)
 }
 
 // === Boot ===
@@ -282,13 +320,26 @@ let employees = null;
 let dayTotal = 0;
 
 // One-shot seed for testing (per建全 2026-06-06 request):
-// 累積至 6/4 含 月營業額 = 163,805，writeback to localStorage if 115_06 unset
+// 累積至 6/4 含 月營業額 = 163,805 / 月總工時 = 135.5
 function seedMonth(){
-  const key = "monthly_total_115_06";
-  if (localStorage.getItem(key) == null){
-    localStorage.setItem(key, "163805");
-    console.log('seeded 115_06 = 163805 for testing');
+  const k1 = "monthly_total_115_06";
+  if (localStorage.getItem(k1) == null){
+    localStorage.setItem(k1, "163805");
   }
+  const k2 = "monthly_hours_115_06";
+  if (localStorage.getItem(k2) == null){
+    localStorage.setItem(k2, "135.5");
+  }
+}
+
+// === Monthly hours ===
+let serverHoursCache = null;
+function getMonthHours(){
+  if (serverHoursCache != null) return serverHoursCache;
+  return parseFloat(localStorage.getItem("monthly_hours_" + STATE.ym) || "0");
+}
+function setMonthHours(v){
+  localStorage.setItem("monthly_hours_" + STATE.ym, String(Math.max(0, parseFloat(v) || 0)));
 }
 
 async function boot(){
@@ -359,18 +410,20 @@ function renderMeals(){
   host.querySelectorAll('input[type=number]').forEach(inp =>
     inp.addEventListener('input', recalc)
   );
-  // Wire 預訂餐 pencil override
+  // Wire 預訂餐 pencil override → uses custom modal with number keyboard
   host.querySelectorAll('.amount-override').forEach(btn =>
     btn.addEventListener('click', ()=>{
       const meal = btn.dataset.meal;
-      const amtInp = document.querySelector(`[data-meal="${meal}"][data-k="amount"]`);
-      const cur = amtInp.value || amtInp.placeholder || '0';
-      const v = prompt('輸入修正後的營業額：', cur);
-      if (v !== null){
-        amtInp.value = String(parseInt(v, 10) || 0);
-        amtInp.dataset.manual = '1';
-        recalc();
-      }
+      openNumberInput({
+        title: '修正預訂餐營業額',
+        value: document.querySelector(`[data-meal="${meal}"][data-k="amount"]`).value || '0',
+        onOk: v => {
+          const amtInp = document.querySelector(`[data-meal="${meal}"][data-k="amount"]`);
+          amtInp.value = String(parseInt(v, 10) || 0);
+          amtInp.dataset.manual = '1';
+          recalc();
+        }
+      });
     })
   );
 }
@@ -524,6 +577,25 @@ function halfHourStepper(k){
     <button type="button" data-act="plus" data-k="${k}">＋</button>
   </div>`;
 }
+// === Number-keyboard input modal ===
+let _numInputCb = null;
+function openNumberInput({ title, value, onOk }){
+  _numInputCb = onOk;
+  document.getElementById('numInputTitle').textContent = title || '輸入數字';
+  const f = document.getElementById('numInputField');
+  f.value = value || '';
+  document.getElementById('numInputModal').style.display = 'flex';
+  setTimeout(()=>{ f.focus(); f.select(); }, 50);
+}
+function closeNumberInput(commit){
+  const f = document.getElementById('numInputField');
+  if (commit && _numInputCb) _numInputCb(f.value);
+  document.getElementById('numInputModal').style.display = 'none';
+  _numInputCb = null;
+}
+window.openNumberInput = openNumberInput;
+window.closeNumberInput = closeNumberInput;
+
 // === Custom wheel time picker ===
 let _tpTarget = null;
 function openTimePicker(btn){
@@ -651,6 +723,25 @@ function recalc(){
   const monthly = getMonth() + total;
   document.getElementById('monthSum').textContent = fmtNT(monthly);
 
+  // Day hours = sum of selected persons' worked + OT
+  let dayH = 0;
+  document.querySelectorAll('.person-tile.on').forEach(tile=>{
+    const wrapper = tile.parentElement;
+    const fields = wrapper.querySelector('.person-fields');
+    if (!fields) return;
+    const startStr = (fields.querySelector('[data-k="start"]')?.dataset.val) || '08:00';
+    const endStr = (fields.querySelector('[data-k="end"]')?.dataset.val) || '17:00';
+    const s = timeToFloat(startStr), e = timeToFloat(endStr);
+    const rest = parseFloat(fields.querySelector('input[data-k="rest"]')?.value) || 0;
+    const otField = fields.querySelector('.ot-field');
+    const ot = (otField && otField.style.display !== 'none')
+      ? (parseFloat(fields.querySelector('input[data-k="ot"]')?.value) || 0) : 0;
+    const worked = Math.max(0, (e > s ? e - s : e + 24 - s) - rest);
+    dayH += worked + ot;
+  });
+  document.getElementById('dayHoursDisp').textContent = dayH > 0 ? dayH.toFixed(1) + ' h' : '--';
+  document.getElementById('monthHoursSum').textContent = (getMonthHours() + dayH).toFixed(1) + ' h';
+
   validate();
 }
 
@@ -689,7 +780,12 @@ function attachHandlers(){
   document.getElementById('fixMonth').addEventListener('click', ()=>{
     const cur = getMonth();
     const v = prompt("請輸入本月累積營業額（不含今日）：", String(cur));
-    if (v !== null) { setMonth(v); recalc(); }
+    if (v !== null) { setMonth(v); serverMonthCache = null; recalc(); }
+  });
+  document.getElementById('fixMonthHours').addEventListener('click', ()=>{
+    const cur = getMonthHours();
+    const v = prompt("請輸入本月累積工時（不含今日，小時）：", String(cur));
+    if (v !== null) { setMonthHours(v); serverHoursCache = null; recalc(); }
   });
   document.getElementById('addOther').addEventListener('click', ()=>{
     const host = document.getElementById('personList');
@@ -725,7 +821,7 @@ async function openRecords(){
   modal.style.display = 'flex';
   list.innerHTML = '<div class="small" style="text-align:center;padding:20px">載入中…</div>';
   if (!WEBHOOK_URL){
-    list.innerHTML = '<div class="small" style="color:var(--warn);text-align:center;padding:20px">Webhook 尚未部署，無法查詢雲端紀錄</div>';
+    list.innerHTML = '<div style="text-align:center;padding:24px"><div style="font-size:36px;margin-bottom:8px">⏳</div><div class="small" style="color:var(--muted);line-height:1.6">雲端紀錄功能等待 Apps Script 部署完成<br>部署後此功能立即可用<br><br>暫時改 / 刪請聯絡管理員手動處理</div></div>';
     return;
   }
   try{
@@ -821,9 +917,12 @@ function collect(){
   const dayAmt = meals.reduce((s,m)=>s+m.amount, 0);
   const atv = guests > 0 ? Math.round(dayAmt / guests) : 0;
   const monthTotal = getMonth() + dayAmt;
+  // total hours = sum of worked + ot
+  const dayHours = persons.reduce((s,p)=> s + p.worked + (p.ot || 0), 0);
+  const monthHours = getMonthHours() + dayHours;
   return {
     date: STATE.roc, site:"中科台積電15B", reporter: profile.displayName,
-    guests, atv, meals, persons, dayAmt, monthTotal
+    guests, atv, meals, persons, dayAmt, monthTotal, dayHours, monthHours
   };
 }
 
@@ -835,7 +934,9 @@ function buildText(d){
   lines.push('');
   lines.push('本日來客數：' + d.guests);
   lines.push('客單價(當日業績/來客數)：' + d.atv);
-  d.meals.forEach(m => {
+  // Filter out meals where both count and amount are 0 (user toggled on but didn't fill)
+  const validMeals = d.meals.filter(m => (m.count || 0) > 0 || (m.amount || 0) > 0);
+  validMeals.forEach(m => {
     lines.push('');
     lines.push('【' + m.label + '】');
     if (m.type === 'muscle'){
@@ -861,9 +962,13 @@ function buildText(d){
     lines.push(g + '：');
     byGroup[g].forEach(p => {
       const otStr = p.ot > 0 ? '，加' + p.ot : '';
-      lines.push(p.name + '：' + p.start + '-' + p.end + '（休' + p.rest + otStr + '）');
+      const totalH = (p.worked + (p.ot || 0));
+      lines.push(p.name + '：' + p.start + '-' + p.end + '（休' + p.rest + otStr + '） 工時 ' + totalH.toFixed(1) + 'h');
     });
   });
+  lines.push('');
+  lines.push('今日總工時：' + d.dayHours.toFixed(1) + 'h');
+  lines.push('當月總工時加總：' + d.monthHours.toFixed(1) + 'h');
   return lines.join('\n');
 }
 
@@ -913,6 +1018,7 @@ async function submit(){
     }
     // local fallback bump (in case webhook absent)
     if (serverMonthCache == null) setMonth(getMonth() + d.dayAmt);
+    if (serverHoursCache == null) setMonthHours(getMonthHours() + d.dayHours);
     const btn = document.getElementById('btnSubmit');
     btn.textContent = "✓ 已送出";
     btn.disabled = true;
