@@ -124,9 +124,14 @@
 <div class="card">
   <h2>📅 回報日期</h2>
   <div class="row"><label>日期</label>
-    <div class="val" id="dateDisp" style="display:flex;align-items:center;gap:6px">
+    <div class="val" id="dateDisp" style="display:flex;align-items:center;gap:6px;position:relative">
       <span id="dateText">--</span>
-      <button type="button" id="editDateBtn" class="icon-btn" title="修改日期">✏️</button>
+      <button type="button" id="editDateBtn" class="icon-btn" title="修改日期" style="position:relative">
+        ✏️
+        <!-- 隱形 date input 疊在按鈕上：iOS/Android 都直接點按鈕觸發原生 picker -->
+        <input type="date" id="dateInput"
+          style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:none;padding:0;font-size:16px">
+      </button>
     </div>
   </div>
   <!-- Hidden holders so JS keeps working -->
@@ -291,6 +296,8 @@ function updateDate(d){
   serverHoursCache = null;
   document.getElementById('dateText').textContent = STATE.roc;
   document.getElementById('hdrSub').textContent = STATE.roc;
+  const di = document.getElementById('dateInput');
+  if (di) di.value = STATE.iso;
   // Refresh muscle pricing (depends on weekday) — but preserve existing input values
   refreshMuscleHints();
   // Refresh server month
@@ -793,25 +800,19 @@ function validate(){
 
 // === Handlers ===
 function attachHandlers(){
-  document.getElementById('editDateBtn').addEventListener('click', ()=>{
-    // 建一個 ephemeral input，使用完立即移除 — 確保畫面上不會有殘留輸入框
-    const inp = document.createElement('input');
-    inp.type = 'date';
-    inp.value = STATE.iso;
-    inp.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none';
-    document.body.appendChild(inp);
-    const cleanup = () => { try { inp.remove(); } catch(_){} };
-    inp.addEventListener('change', () => {
-      if (inp.value) updateDate(new Date(inp.value + 'T00:00:00'));
-      cleanup();
-    });
-    inp.addEventListener('blur', cleanup);
-    // 安全 fallback: 5 秒後一定 cleanup
-    setTimeout(cleanup, 5000);
-    setTimeout(()=>{
-      inp.focus();
-      if (inp.showPicker) try{ inp.showPicker(); } catch(e){}
-    }, 0);
+  // 日期 input 一直存在 (透明疊在 ✏️ 按鈕上)
+  // 任何點擊都直接觸發原生 picker — iOS Safari + Android 都通用
+  const dateInp = document.getElementById('dateInput');
+  dateInp.value = STATE.iso;
+  dateInp.addEventListener('change', () => {
+    if (dateInp.value) updateDate(new Date(dateInp.value + 'T00:00:00'));
+  });
+  // 不需要 editDateBtn 額外 click handler — 透明 input 直接收到點擊
+  // 但保留一個 fallback: showPicker (Chromium 用) 給某些桌面情境
+  document.getElementById('editDateBtn').addEventListener('click', (e)=>{
+    if (e.target.tagName !== 'INPUT' && dateInp.showPicker) {
+      try { dateInp.showPicker(); } catch(_) {}
+    }
   });
   document.getElementById('fixMonth').addEventListener('click', ()=>{
     const cur = getMonth();
