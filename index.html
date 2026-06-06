@@ -145,8 +145,16 @@
 
 <div class="card">
   <h2>👥 來客數 / 客單價（自動）</h2>
-  <div class="row"><label>本日來客數</label><div class="val" id="guestCount">--</div></div>
+  <div class="row"><label>來客數</label><div class="val" id="guestCount">--</div></div>
   <div class="row"><label>客單價</label><div class="val" id="atvDisp">--</div></div>
+</div>
+
+<div class="card">
+  <h2>⏱ 今日上班人員</h2>
+  <div class="small" style="margin-bottom:6px">點員工 + 展開填工時</div>
+
+  <div id="personList"></div>
+  <button id="addOther" type="button">+ 其他人員</button>
 </div>
 
 <div class="card">
@@ -164,16 +172,7 @@
 </div>
 
 <div class="card">
-  <h2>⏱ 當日上班人員</h2>
-  <div class="small" style="margin-bottom:6px">點員工 + 展開填工時</div>
-
-  <div id="personList"></div>
-  <button id="addOther" type="button">+ 其他人員</button>
-</div>
-
-<div class="card">
   <h2>⏰ 工時</h2>
-  <div class="row"><label>今日總工時</label><div class="val" id="dayHoursDisp">--</div></div>
   <div class="monthly-row">
     <div>
       <div class="small">本月（不含今日）累積工時</div>
@@ -752,7 +751,8 @@ function recalc(){
     const worked = Math.max(0, (e > s ? e - s : e + 24 - s) - rest);
     dayH += worked + ot;
   });
-  document.getElementById('dayHoursDisp').textContent = dayH > 0 ? dayH.toFixed(1) + ' h' : '--';
+  const dhd = document.getElementById('dayHoursDisp');
+  if (dhd) dhd.textContent = dayH > 0 ? dayH.toFixed(1) + ' h' : '--';
   // monthly工時 = 不含當日 (純伺服器值)
   document.getElementById('monthHoursSum').textContent = getMonthHours().toFixed(1) + ' h';
 
@@ -853,10 +853,11 @@ async function openRecords(){
     j.items.forEach(item => {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px';
+      const hours = Number(item.dayHours || 0).toFixed(1);
       row.innerHTML = `
         <div>
           <div style="font-weight:600">${item.date}</div>
-          <div class="small">${fmtNT(item.dayAmt)}</div>
+          <div class="small">${fmtNT(item.dayAmt)} / ${hours}h</div>
         </div>
         <button class="rec-del" data-id="${item.id}" style="background:transparent;border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer">刪除</button>
       `;
@@ -948,8 +949,11 @@ function buildText(d){
   lines.push('場域：' + d.site);
   lines.push('填寫人：' + d.reporter);
   lines.push('');
-  lines.push('本日來客數：' + d.guests);
+  lines.push('來客數：' + d.guests);
   lines.push('客單價(當日業績/來客數)：' + d.atv);
+  lines.push('今日營業額：' + d.dayAmt);
+  lines.push('當月營業額加總：' + d.monthTotal);
+  lines.push('---');
   // Filter out meals where both count and amount are 0 (user toggled on but didn't fill)
   const validMeals = d.meals.filter(m => (m.count || 0) > 0 || (m.amount || 0) > 0);
   validMeals.forEach(m => {
@@ -962,13 +966,8 @@ function buildText(d){
     lines.push('餐數：' + m.count);
     lines.push('營業額：' + m.amount);
   });
-  lines.push('');
-  lines.push('全日營業額：' + d.dayAmt);
-  lines.push('');
-  lines.push('當月營業額加總：' + d.monthTotal);
   lines.push('---');
-  lines.push('當日上班人員');
-  // group persons by group label
+  lines.push('今日上班人員');
   const byGroup = {};
   d.persons.filter(p => p.name && p.name.trim()).forEach(p=>{
     (byGroup[p.group] = byGroup[p.group] || []).push(p);
@@ -977,9 +976,9 @@ function buildText(d){
     lines.push('');
     lines.push(g + '：');
     byGroup[g].forEach(p => {
-      const otStr = p.ot > 0 ? '，加' + p.ot : '';
       const totalH = (p.worked + (p.ot || 0));
-      lines.push(p.name + '：' + p.start + '-' + p.end + '（休' + p.rest + otStr + '） 工時 ' + totalH.toFixed(1) + 'h');
+      const otPart = p.ot > 0 ? ('加班:' + p.ot + 'h/') : '';
+      lines.push(p.name + '：' + p.start + '-' + p.end + '（休息:' + p.rest + 'h/' + otPart + '工時:' + totalH.toFixed(1) + 'h）');
     });
   });
   lines.push('');
@@ -1040,7 +1039,11 @@ async function submit(){
     const btn = document.getElementById('btnSubmit');
     btn.textContent = "✓ 已送出";
     btn.disabled = true;
-    setTimeout(()=>{ try{ liff.closeWindow(); } catch(e){} }, 800);
+    // Hack: send a follow-up tiny message + wait longer before close → LINE 對話被推到底
+    try{
+      await liff.sendMessages([{ type:'text', text:'✓' }]);
+    } catch(_e){}
+    setTimeout(()=>{ try{ liff.closeWindow(); } catch(e){} }, 1800);
   } catch(e){
     console.error('submit error', e);
     errBox.textContent = "送出失敗：" + (e.message || e);
