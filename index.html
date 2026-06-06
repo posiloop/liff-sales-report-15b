@@ -7,35 +7,56 @@
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
   :root{
-    --bg:#f6f6f8; --card:#fff; --line:#e7e7ec; --text:#1c1c1e;
-    --muted:#6e6e73; --brand:#06c755; --brand-dim:#0bb14b;
-    --warn:#d92d20; --accent:#0f62fe;
+    /* 益碗之間 brand palette */
+    --brand:#8F2E29;          /* deep red (益 logo) */
+    --brand-dim:#6f1f1c;
+    --gold:#D4B584;           /* tan/gold (frame) */
+    --gold-soft:#f5ecdb;
+    --bg:#fafaf6;             /* slight warm bg */
+    --card:#fff;
+    --line:#e7e3da;
+    --text:#1c1815;
+    --muted:#7a716a;
+    --accent:#0f62fe;
+    --warn:#d92d20;
+    --success:#06c755;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.45;padding:12px 12px 100px}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.45;padding:0 0 100px}
+  .app-header{
+    background:linear-gradient(135deg,var(--brand) 0%,var(--brand-dim) 100%);
+    color:#fff;padding:16px 14px 22px;margin:0 0 14px;
+    border-radius:0 0 18px 18px;box-shadow:0 4px 18px rgba(143,46,41,.18);
+  }
+  .app-header h1{font-size:18px;margin:0 0 2px;font-weight:700;letter-spacing:.3px}
+  .app-header .sub{color:var(--gold-soft);font-size:13px;margin:0}
+  .container{padding:0 12px}
   h1{font-size:18px;margin:0 0 4px}
   .sub{color:var(--muted);font-size:13px;margin-bottom:14px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
-  .card h2{font-size:15px;margin:0 0 10px;color:#000}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px;box-shadow:0 2px 8px rgba(143,46,41,.04)}
+  .card h2{font-size:15px;margin:0 0 12px;color:var(--brand);font-weight:700;display:flex;align-items:center;gap:6px;border-bottom:2px solid var(--gold-soft);padding-bottom:8px}
   .row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:6px 0}
   .row label{flex:1;color:var(--muted)}
   .row .val{font-weight:600;color:#000}
   input[type=number]{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:130px;text-align:right;background:#fff}
   input[type=number]:focus{outline:2px solid var(--accent);outline-offset:-2px}
   input[type=text]{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;background:#fff}
-  .meal-tile{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#fafafa;cursor:pointer;user-select:none}
-  .meal-tile.on{background:#e8f8ee;border-color:var(--brand)}
-  .meal-tile .name{font-weight:600}
-  .meal-tile .plus{width:28px;height:28px;border-radius:50%;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
-  .meal-tile.on .plus{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .meal-tile{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0;background:linear-gradient(180deg,#fff,#fafaf6);cursor:pointer;user-select:none;transition:all .15s}
+  .meal-tile:active{transform:scale(.98)}
+  .meal-tile.on{background:linear-gradient(180deg,#fff5e6,var(--gold-soft));border-color:var(--brand);box-shadow:0 2px 8px rgba(143,46,41,.12)}
+  .meal-tile .name{font-weight:600;font-size:15px}
+  .meal-tile .plus{width:30px;height:30px;border-radius:50%;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted);transition:all .15s}
+  .meal-tile.on .plus{background:var(--brand);color:#fff;border-color:var(--brand);transform:rotate(45deg)}
   .meal-fields{display:none;padding:8px 0 4px}
   .meal-tile.on + .meal-fields{display:block}
   .sum-line{display:flex;justify-content:space-between;border-top:1px dashed var(--line);padding-top:8px;margin-top:8px;font-weight:600}
   .sum-line .val{color:var(--brand-dim)}
-  .person-tile{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#fafafa;cursor:pointer;user-select:none}
-  .person-tile.on{background:#e8f4ff;border-color:var(--accent)}
-  .person-tile .plus{width:28px;height:28px;border-radius:50%;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
-  .person-tile.on .plus{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .person-tile{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin:6px 0;background:#fff;cursor:pointer;user-select:none;transition:all .15s}
+  .person-tile:active{transform:scale(.98)}
+  .person-tile.on{background:linear-gradient(180deg,#fff,#f5ecdb);border-color:var(--gold)}
+  .person-tile .name{font-weight:600}
+  .person-tile .plus{width:28px;height:28px;border-radius:50%;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted);transition:all .15s}
+  .person-tile.on .plus{background:var(--brand);color:#fff;border-color:var(--brand);transform:rotate(45deg)}
   .person-fields{display:none;padding:10px 4px 6px;background:#fff;border:1px solid var(--line);border-radius:10px;margin:-4px 0 8px}
   .person-tile.on + .person-fields{display:block}
   .person-fields .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -45,13 +66,16 @@
   .slider-row input[type=range]{flex:1;accent-color:var(--accent)}
   .grp-label{font-size:13px;color:var(--muted);margin:10px 0 4px}
   #addOther{background:transparent;border:1px dashed var(--line);border-radius:10px;padding:10px;color:var(--muted);width:100%;text-align:center;font:inherit;margin-top:6px}
-  .submit-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px;display:flex;gap:10px}
-  button.primary{flex:1;background:var(--brand);color:#fff;border:none;border-radius:10px;padding:12px;font-size:16px;font-weight:600;font:inherit}
-  button.primary:disabled{background:#c8c8cd}
+  .submit-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px;display:flex;gap:10px;box-shadow:0 -2px 12px rgba(0,0,0,.05)}
+  button.primary{flex:1;background:linear-gradient(135deg,var(--brand),var(--brand-dim));color:#fff;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:700;font:inherit;letter-spacing:.5px;box-shadow:0 4px 12px rgba(143,46,41,.25);cursor:pointer}
+  button.primary:disabled{background:#c8c8cd;box-shadow:none;cursor:not-allowed}
   .err{color:var(--warn);font-size:13px;margin-top:4px}
   .small{font-size:12px;color:var(--muted)}
-  .monthly-row{background:#fffbe6;border:1px solid #f3d488;border-radius:8px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-  .monthly-row button{background:none;border:1px solid #d29400;color:#a86c00;padding:4px 10px;border-radius:6px;font:inherit;font-size:12px}
+  .monthly-row{background:linear-gradient(135deg,var(--gold-soft),#fdf3df);border:1px solid var(--gold);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .monthly-row button{background:#fff;border:1px solid var(--brand);color:var(--brand);padding:6px 12px;border-radius:8px;font:inherit;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap}
+  .monthly-row button:active{transform:scale(.96)}
+  .grp-pick{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:15px;font-weight:600;color:var(--brand);cursor:pointer;transition:all .15s}
+  .grp-pick:active{background:var(--gold-soft);transform:scale(.98)}
   .pick-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .icon-btn{background:transparent;border:none;font-size:16px;cursor:pointer;padding:2px 4px;color:var(--accent)}
   #dateInput{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -87,8 +111,12 @@
 </head>
 <body>
 
-<h1>業績回報 - 中科15B</h1>
-<div class="sub" id="hdrSub">--</div>
+<div class="app-header">
+  <h1>📊 業績回報 · 中科 15B</h1>
+  <div class="sub" id="hdrSub">--</div>
+</div>
+
+<div class="container">
 
 <div class="card">
   <h2>📋 基本資訊</h2>
@@ -119,7 +147,7 @@
 </div>
 
 <div class="card">
-  <h2>📊 當月營業額</h2>
+  <h2>💰 當月營業額</h2>
   <div class="monthly-row">
     <div>
       <div class="small">本月（含今日）累積</div>
@@ -138,7 +166,15 @@
   <div class="small" style="margin-bottom:6px">點員工 + 展開填工時，「其他」可手填名字</div>
 
   <div id="personList"></div>
-  <button id="addOther" type="button">+ 其他人員（手填）</button>
+  <button id="addOther" type="button">+ 其他人員</button>
+  <!-- Group picker for 其他人員 -->
+  <div id="otherGrpPicker" style="display:none;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:6px">
+    <div class="small" style="margin-bottom:8px">這位是…？</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button type="button" class="grp-pick" data-grp="正職">正職</button>
+      <button type="button" class="grp-pick" data-grp="兼職">兼職</button>
+    </div>
+  </div>
 </div>
 
 <!-- Records management modal -->
@@ -170,7 +206,9 @@
   </div>
 </div>
 
-<div id="errBox" class="err"></div>
+</div><!-- /container -->
+
+<div id="errBox" class="err" style="margin:0 12px"></div>
 
 <div class="submit-bar">
   <button id="btnSubmit" class="primary" type="button" disabled>請先填完必填欄位</button>
@@ -232,7 +270,18 @@ let profile = { displayName: "(未取得)", userId: null };
 let employees = null;
 let dayTotal = 0;
 
+// One-shot seed for testing (per建全 2026-06-06 request):
+// 累積至 6/4 含 月營業額 = 163,805，writeback to localStorage if 115_06 unset
+function seedMonth(){
+  const key = "monthly_total_115_06";
+  if (localStorage.getItem(key) == null){
+    localStorage.setItem(key, "163805");
+    console.log('seeded 115_06 = 163805 for testing');
+  }
+}
+
 async function boot(){
+  seedMonth();
   document.getElementById('dateText').textContent = STATE.roc;
   document.getElementById('dateInput').value = STATE.iso;
   document.getElementById('hdrSub').textContent = STATE.roc;
@@ -532,16 +581,26 @@ function attachHandlers(){
     const v = prompt("請輸入本月累積營業額（不含今日）：", String(cur));
     if (v !== null) { setMonth(v); recalc(); }
   });
+  const otherPicker = document.getElementById('otherGrpPicker');
   document.getElementById('addOther').addEventListener('click', ()=>{
-    const host = document.getElementById('personList');
-    const w = buildPersonTile('其他人員', '兼職', true);
-    host.appendChild(w);
-    // Wire delete button + ensure click doesn't toggle parent
-    const tile = w.querySelector('.person-tile');
-    const rmBtn = tile && tile.querySelector('.person-remove');
-    if (rmBtn) rmBtn.addEventListener('click', ev=>{
-      ev.stopPropagation();
-      w.remove();
+    otherPicker.style.display = otherPicker.style.display === 'none' ? 'block' : 'none';
+  });
+  otherPicker.querySelectorAll('.grp-pick').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const grp = btn.dataset.grp;
+      otherPicker.style.display = 'none';
+      const host = document.getElementById('personList');
+      const w = buildPersonTile('其他人員', grp, true);
+      host.appendChild(w);
+      const tile = w.querySelector('.person-tile');
+      const rmBtn = tile && tile.querySelector('.person-remove');
+      if (rmBtn) rmBtn.addEventListener('click', ev=>{
+        ev.stopPropagation();
+        w.remove();
+        validate();
+      });
+      // Auto-open the new tile so user immediately fills name
+      tile.classList.add('on');
       validate();
     });
   });
