@@ -495,10 +495,11 @@ function normalizeMember(member){
 function renderPersons(){
   const host = document.getElementById('personList');
   host.innerHTML = "";
+  const GROUP_EMOJI_UI = { '正職': '💼', '兼職': '⏱' };
   (employees.groups || []).forEach(g => {
     const lbl = document.createElement('div');
     lbl.className = 'grp-label';
-    lbl.textContent = g.label;
+    lbl.textContent = (GROUP_EMOJI_UI[g.label] || '') + ' ' + g.label;
     host.appendChild(lbl);
     g.members.forEach(member => {
       const norm = normalizeMember(member);
@@ -526,8 +527,8 @@ function buildPersonTile(name, group, isOther, schedule){
     <div class="field" style="grid-column:1/-1">
       <label>身份</label>
       <div class="grp-toggle">
-        <button type="button" data-grp="正職" class="${group==='正職'?'on':''}">正職</button>
-        <button type="button" data-grp="兼職" class="${group==='兼職'?'on':''}">兼職</button>
+        <button type="button" data-grp="正職" class="${group==='正職'?'on':''}">💼 正職</button>
+        <button type="button" data-grp="兼職" class="${group==='兼職'?'on':''}">⏱ 兼職</button>
       </div>
     </div>` : '';
   const sched = schedule || getDefaultSchedule();
@@ -996,8 +997,10 @@ function buildText(d){
     const bi = groupOrder.indexOf(b);
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
+  const GROUP_EMOJI = { '正職': '💼', '兼職': '⏱' };
   sortedGroups.forEach(g => {
-    lines.push('<' + g + '>');
+    const e = GROUP_EMOJI[g] || '';
+    lines.push('【' + (e ? e + ' ' : '') + g + '】');
     byGroup[g].forEach(p => {
       const totalH = (p.worked + (p.ot || 0));
       const otPart = p.ot > 0 ? ('加班:' + fmtHr(p.ot) + 'h/') : '';
@@ -1005,6 +1008,7 @@ function buildText(d){
       lines.push('(休息:' + fmtHr(p.rest) + 'h/' + otPart + '工時:' + fmtHr(totalH) + 'h)');
     });
   });
+  lines.push('');
   lines.push('今日總工時：' + fmtHr(d.dayHours) + 'h');
   lines.push('當月總工時加總：' + fmtHr(d.monthHours + d.dayHours) + 'h');
   return lines.join('\n');
