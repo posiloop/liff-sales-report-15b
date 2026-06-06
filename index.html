@@ -298,20 +298,22 @@ function updateDate(d){
   document.getElementById('dateText').textContent = STATE.roc;
   document.getElementById('hdrSub').textContent = STATE.roc;
   document.getElementById('dateInput').value = STATE.iso;
-  // Reset all user inputs on date change (per建全)
-  resetAllFields();
-  // Re-render meals so 燃肌餐 displays the correct day-of-week pricing
-  renderMeals();
-  renderPersons();
+  // Refresh muscle pricing (depends on weekday) — but preserve existing input values
+  refreshMuscleHints();
   // Refresh server month
   fetchMonth(STATE.ym).then(v=>{ if (v != null) serverMonthCache = v; recalc(); });
   recalc();
 }
 
-function resetAllFields(){
-  document.getElementById('guestCount').value = '';
-  // Person list will be re-rendered, so just clear remove-able "其他人員" tiles indirectly
-  // by calling renderPersons (caller does it)
+// Update only the muscle hint text (price by day), keep existing user inputs
+function refreshMuscleHints(){
+  const rate = getMuscleRate();
+  const muscleTile = document.querySelector('.meal-tile[data-key="muscle"]');
+  if (!muscleTile) return;
+  const fields = muscleTile.nextElementSibling;
+  if (!fields) return;
+  const hint = fields.querySelector('.small');
+  if (hint) hint.textContent = `本日定價：小 $${rate.small} / 大 $${rate.large}（自動依星期）`;
 }
 
 // === Boot ===
