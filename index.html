@@ -940,12 +940,11 @@ function buildText(d){
   lines.push('來客數：' + d.guests);
   lines.push('客單價(當日業績/來客數)：' + d.atv);
   lines.push('今日營業額：' + d.dayAmt);
-  lines.push('當月營業額加總：' + d.monthTotal);
+  lines.push('當月營業額加總：' + (d.monthTotal + d.dayAmt));
   lines.push('---');
   // Filter out meals where both count and amount are 0 (user toggled on but didn't fill)
   const validMeals = d.meals.filter(m => (m.count || 0) > 0 || (m.amount || 0) > 0);
   validMeals.forEach(m => {
-    lines.push('');
     lines.push('【' + (m.emoji || '') + ' ' + m.label + '】');
     if (m.type === 'muscle'){
       lines.push('小：' + (m.small || 0));
@@ -971,7 +970,7 @@ function buildText(d){
   });
   lines.push('');
   lines.push('今日總工時：' + d.dayHours.toFixed(1) + 'h');
-  lines.push('當月總工時加總：' + d.monthHours.toFixed(1) + 'h');
+  lines.push('當月總工時加總：' + (d.monthHours + d.dayHours).toFixed(1) + 'h');
   return lines.join('\n');
 }
 
@@ -1027,11 +1026,13 @@ async function submit(){
     const btn = document.getElementById('btnSubmit');
     btn.textContent = "✓ 已送出";
     btn.disabled = true;
-    // Hack: send a follow-up tiny message + wait longer before close → LINE 對話被推到底
-    try{
-      await liff.sendMessages([{ type:'text', text:'✓' }]);
-    } catch(_e){}
-    setTimeout(()=>{ try{ liff.closeWindow(); } catch(e){} }, 1800);
+    // Hack v2 (置底): 不再發 follow-up，盡快關閉並讓 LINE 自動 scroll
+    // 測試發現 follow-up '✓' 沒推 scroll，反而多一則訊息
+    // 改用 closeWindow 立刻關，瞬間關掉讓 LINE 用最新訊息為焦點
+    try{ liff.closeWindow(); } catch(e){
+      // closeWindow 在某些 OS 有 race condition，fallback 200ms 重試
+      setTimeout(()=>{ try{ liff.closeWindow(); } catch(_){} }, 200);
+    }
   } catch(e){
     console.error('submit error', e);
     errBox.textContent = "送出失敗：" + (e.message || e);
