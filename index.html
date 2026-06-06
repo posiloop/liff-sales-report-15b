@@ -385,7 +385,7 @@ function buildFlex(d){
   return {
     type:'bubble', size:'mega',
     header:{ type:'box', layout:'vertical', backgroundColor:'#06c755', paddingAll:'14px', contents:[
-      { type:'text', text:`業績回報 - 中科15B`, color:'#fff', weight:'bold', size:'lg' },
+      { type:'text', text:`業績回報 - 中科15B`, color:'#ffffff', weight:'bold', size:'lg' },
       { type:'text', text: d.date, color:'#dffaeb', size:'sm' },
       { type:'text', text:`填寫人：${d.reporter}`, color:'#dffaeb', size:'xs' }
     ]},
@@ -433,8 +433,12 @@ async function submit(){
     } catch(sendErr){
       // log full payload to help debug
       console.error('sendMessages failed', sendErr, JSON.stringify(payload));
+      const payloadStr = JSON.stringify(payload);
       errBox.innerHTML = '送出失敗：' + (sendErr.code || '') + ' ' + (sendErr.message || sendErr) +
-        '<br><small>診斷：在這頁手機按住 → 在控制台看 console.error，或截圖回 Claude</small>';
+        '<br><small>payload 長度 ' + payloadStr.length + ' bytes</small>' +
+        '<br><details style="margin-top:6px"><summary style="cursor:pointer">查看 Flex JSON</summary>' +
+        '<textarea readonly style="width:100%;height:160px;font-size:10px;font-family:monospace">' +
+        payloadStr.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</textarea></details>';
       return;
     }
     setMonth(getMonth() + d.dayAmt);
