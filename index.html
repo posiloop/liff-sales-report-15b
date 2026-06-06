@@ -122,7 +122,7 @@
 <div class="container">
 
 <div class="card">
-  <h2>📋 基本資訊</h2>
+  <h2>📅 回報日期</h2>
   <div class="row"><label>日期</label>
     <div class="val" id="dateDisp" style="display:flex;align-items:center;gap:6px">
       <span id="dateText">--</span>
@@ -130,8 +130,10 @@
       <input type="date" id="dateInput" style="display:none">
     </div>
   </div>
-  <div class="row"><label>場域</label><div class="val">中科台積電15B</div></div>
-  <div class="row"><label>填寫人</label><div class="val" id="userDisp">--</div></div>
+  <!-- Hidden holders so JS keeps working -->
+  <span id="userDisp" style="display:none">--</span>
+  <span id="guestCount" style="display:none">0</span>
+  <span id="atvDisp" style="display:none">0</span>
 </div>
 
 <div class="card">
@@ -141,12 +143,6 @@
   <div id="mealList"></div>
 
   <div class="sum-line"><span>全日營業額</span><span class="val" id="daySum">$0</span></div>
-</div>
-
-<div class="card">
-  <h2>👥 來客數 / 客單價（自動）</h2>
-  <div class="row"><label>來客數</label><div class="val" id="guestCount">--</div></div>
-  <div class="row"><label>客單價</label><div class="val" id="atvDisp">--</div></div>
 </div>
 
 <div class="card">
@@ -337,6 +333,33 @@ function getMonthHours(){
 }
 function setMonthHours(v){
   localStorage.setItem("monthly_hours_" + STATE.ym, String(Math.max(0, parseFloat(v) || 0)));
+}
+
+function showSuccessScreen(){
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;
+    display:flex;align-items:center;justify-content:center;padding:24px
+  `;
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:18px;padding:28px 24px;text-align:center;max-width:340px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,.3)">
+      <div style="font-size:56px;line-height:1;margin-bottom:14px">✅</div>
+      <div style="font-size:18px;font-weight:700;color:var(--brand);margin-bottom:6px">已成功送出</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.6">
+        訊息已送到聊天室<br>
+        <strong>提示：</strong>返回 LINE 後若看不到新訊息，<br>
+        手動往下拉到底就能看到
+      </div>
+      <button type="button" id="closeSuccessBtn"
+        style="width:100%;padding:14px;background:linear-gradient(135deg,var(--brand),var(--brand-dim));color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:700;font:inherit;cursor:pointer;box-shadow:0 4px 12px rgba(143,46,41,.25)">
+        返回 LINE 聊天室
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#closeSuccessBtn').addEventListener('click', ()=>{
+    try{ liff.closeWindow(); } catch(e){}
+  });
 }
 
 async function boot(){
@@ -946,8 +969,7 @@ function buildText(d){
   validMeals.forEach(m => {
     lines.push('【' + (m.emoji || '') + ' ' + m.label + '】');
     if (m.type === 'muscle'){
-      lines.push('小：' + (m.small || 0));
-      lines.push('大：' + (m.large || 0));
+      lines.push('小：' + (m.small || 0) + ' / 大：' + (m.large || 0));
     }
     lines.push('餐數：' + m.count);
     lines.push('營業額：' + m.amount);
@@ -1021,16 +1043,9 @@ async function submit(){
     // local fallback bump (in case webhook absent)
     if (serverMonthCache == null) setMonth(getMonth() + d.dayAmt);
     if (serverHoursCache == null) setMonthHours(getMonthHours() + d.dayHours);
-    const btn = document.getElementById('btnSubmit');
-    btn.textContent = "✓ 已送出";
-    btn.disabled = true;
-    // Hack v2 (置底): 不再發 follow-up，盡快關閉並讓 LINE 自動 scroll
-    // 測試發現 follow-up '✓' 沒推 scroll，反而多一則訊息
-    // 改用 closeWindow 立刻關，瞬間關掉讓 LINE 用最新訊息為焦點
-    try{ liff.closeWindow(); } catch(e){
-      // closeWindow 在某些 OS 有 race condition，fallback 200ms 重試
-      setTimeout(()=>{ try{ liff.closeWindow(); } catch(_){} }, 200);
-    }
+    // LINE 對話置底其實不能由 LIFF 強制控制（LINE 客戶端保留 scroll 位置）
+    // 改成：顯示成功訊息 + 按鈕讓使用者主動返回。新開 chat 才會自動 scroll 到底
+    showSuccessScreen();
   } catch(e){
     console.error('submit error', e);
     errBox.textContent = "送出失敗：" + (e.message || e);
