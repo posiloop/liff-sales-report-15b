@@ -997,12 +997,12 @@ function buildText(d){
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
   sortedGroups.forEach(g => {
-    lines.push(g + '：');
+    lines.push('<' + g + '>');
     byGroup[g].forEach(p => {
       const totalH = (p.worked + (p.ot || 0));
       const otPart = p.ot > 0 ? ('加班:' + fmtHr(p.ot) + 'h/') : '';
       lines.push(p.name + '：' + p.start + '-' + p.end);
-      lines.push('（休息:' + fmtHr(p.rest) + 'h/' + otPart + '工時:' + fmtHr(totalH) + 'h）');
+      lines.push('(休息:' + fmtHr(p.rest) + 'h/' + otPart + '工時:' + fmtHr(totalH) + 'h)');
     });
   });
   lines.push('今日總工時：' + fmtHr(d.dayHours) + 'h');
