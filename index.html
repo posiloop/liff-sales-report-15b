@@ -158,29 +158,18 @@
 </div>
 
 <div class="card">
-  <h2>💰 當月營業額</h2>
+  <h2>📈 當月累積（不含今日）</h2>
   <div class="monthly-row">
     <div>
-      <div class="small">本月（不含今日）累積</div>
+      <div class="small">營業額</div>
       <div class="val" id="monthSum" style="font-size:18px">$0</div>
+      <div class="small" style="margin-top:6px">工時</div>
+      <div class="val" id="monthHoursSum" style="font-size:18px">-- h</div>
     </div>
     <div style="display:flex;gap:6px;flex-direction:column">
       <button id="manageRecords">刪除前一筆</button>
-      <button id="fixMonth">修正</button>
-    </div>
-  </div>
-</div>
-
-<div class="card">
-  <h2>⏰ 工時</h2>
-  <div class="monthly-row">
-    <div>
-      <div class="small">本月（不含今日）累積工時</div>
-      <div class="val" id="monthHoursSum" style="font-size:18px">--</div>
-    </div>
-    <div style="display:flex;gap:6px;flex-direction:column">
-      <button id="manageRecordsHours">刪除前一筆</button>
-      <button id="fixMonthHours">修正</button>
+      <button id="fixMonth">修改總營業額</button>
+      <button id="fixMonthHours">修改總工時</button>
     </div>
   </div>
 </div>
@@ -362,7 +351,8 @@ async function boot(){
   // Fetch current month total from server (if WEBHOOK_URL configured)
   const v = await fetchMonth(STATE.ym);
   if (v != null) { serverMonthCache = v; }
-  refreshMonthly();
+  // Use recalc to update BOTH monthSum and monthHoursSum (bug fix v15)
+  recalc();
 }
 
 async function initLiff(){
@@ -825,8 +815,6 @@ function attachHandlers(){
   });
   document.getElementById('btnSubmit').addEventListener('click', submit);
   document.getElementById('manageRecords').addEventListener('click', openRecords);
-  const mrh = document.getElementById('manageRecordsHours');
-  if (mrh) mrh.addEventListener('click', openRecords);
 }
 
 async function openRecords(){
