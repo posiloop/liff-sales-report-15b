@@ -74,8 +74,11 @@
   .monthly-row{background:linear-gradient(135deg,var(--gold-soft),#fdf3df);border:1px solid var(--gold);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
   .monthly-row button{background:#fff;border:1px solid var(--brand);color:var(--brand);padding:6px 12px;border-radius:8px;font:inherit;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap}
   .monthly-row button:active{transform:scale(.96)}
-  .grp-pick{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:15px;font-weight:600;color:var(--brand);cursor:pointer;transition:all .15s}
-  .grp-pick:active{background:var(--gold-soft);transform:scale(.98)}
+  .grp-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .grp-toggle button{padding:8px;background:#fff;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s}
+  .grp-toggle button.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+  .amount-override{background:transparent;border:1px solid var(--line);border-radius:8px;width:36px;height:36px;font-size:14px;cursor:pointer;flex-shrink:0}
+  .amount-override:active{background:var(--gold-soft)}
   .pick-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .icon-btn{background:transparent;border:none;font-size:16px;cursor:pointer;padding:2px 4px;color:var(--accent)}
   #dateInput{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -139,7 +142,7 @@
 
 <div class="card">
   <h2>🍱 各餐別</h2>
-  <div class="small" style="margin-bottom:8px">點 + 展開填寫</div>
+  <div class="small" style="margin-bottom:8px">點 + 展開填寫，燃肌餐／預訂餐金額自動算</div>
 
   <div id="mealList"></div>
 
@@ -163,18 +166,10 @@
 
 <div class="card">
   <h2>⏱ 當日上班人員</h2>
-  <div class="small" style="margin-bottom:6px">點員工 + 展開填工時，「其他」可手填名字</div>
+  <div class="small" style="margin-bottom:6px">點員工 + 展開填工時</div>
 
   <div id="personList"></div>
   <button id="addOther" type="button">+ 其他人員</button>
-  <!-- Group picker for 其他人員 -->
-  <div id="otherGrpPicker" style="display:none;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:6px">
-    <div class="small" style="margin-bottom:8px">這位是…？</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <button type="button" class="grp-pick" data-grp="正職">正職</button>
-      <button type="button" class="grp-pick" data-grp="兼職">兼職</button>
-    </div>
-  </div>
 </div>
 
 <!-- Records management modal -->
@@ -217,13 +212,27 @@
 <script>
 const LIFF_ID = "2010233112-XCCgtapU";
 // Apps Script Web App URL (set after建全 deploys the script + 回 webhook URL)
-// 暫時 placeholder：如果是空字串就 fallback localStorage
 const WEBHOOK_URL = "";  // ← 部署完 Apps Script 後貼這裡
+
+// 燃肌餐定價（每兩個月可能更新；改這張表即可）
+// 鍵 = ISO 星期 (1=Mon, 2=Tue, ..., 5=Fri)
+const MUSCLE_PRICE = {
+  1: { small: 120, large: 135 },
+  2: { small: 130, large: 145 },
+  3: { small: 130, large: 145 },
+  4: { small: 120, large: 135 },
+  5: { small: 150, large: 180 }
+};
+const MUSCLE_DEFAULT = { small: 120, large: 135 }; // fallback for 假日
+
+// 預訂餐單價
+const PREORDER_PRICE = 110;
+
 const MEALS = [
-  { key:"lunch",  label:"午餐",   emoji:"🍱" },
-  { key:"dinner", label:"晚餐",   emoji:"🍽️" },
-  { key:"muscle", label:"燃肌餐", emoji:"💪" },
-  { key:"preorder", label:"預訂餐", emoji:"📦" }
+  { key:"lunch",    label:"午餐",   emoji:"🍱", type:"basic" },
+  { key:"dinner",   label:"晚餐",   emoji:"🍽️", type:"basic" },
+  { key:"muscle",   label:"燃肌餐", emoji:"💪", type:"muscle" },
+  { key:"preorder", label:"預訂餐", emoji:"📦", type:"preorder" }
 ];
 
 // === Date helpers ===
@@ -260,6 +269,8 @@ function updateDate(d){
   document.getElementById('dateText').textContent = STATE.roc;
   document.getElementById('hdrSub').textContent = STATE.roc;
   document.getElementById('dateInput').value = STATE.iso;
+  // Re-render meals so 燃肌餐 displays the correct day-of-week pricing
+  renderMeals();
   // Refresh server month
   fetchMonth(STATE.ym).then(v=>{ if (v != null) serverMonthCache = v; recalc(); });
   recalc();
@@ -317,6 +328,13 @@ async function loadEmployees(){
 }
 
 // === Meals ===
+function getMuscleRate(){
+  // STATE.iso is YYYY-MM-DD; Date getDay() returns 0=Sun..6=Sat → map to 1..7 (Mon=1)
+  const d = new Date(STATE.iso + 'T00:00:00');
+  const dow = d.getDay() === 0 ? 7 : d.getDay();
+  return MUSCLE_PRICE[dow] || MUSCLE_DEFAULT;
+}
+
 function renderMeals(){
   const host = document.getElementById('mealList');
   host.innerHTML = "";
@@ -324,24 +342,70 @@ function renderMeals(){
     const tile = document.createElement('div');
     tile.className = 'meal-tile';
     tile.dataset.key = m.key;
+    tile.dataset.type = m.type;
     tile.innerHTML = `<div class="name">${m.emoji} ${m.label}</div><div class="plus">+</div>`;
     const fields = document.createElement('div');
     fields.className = 'meal-fields';
-    fields.innerHTML = `
-      <div class="row"><label>餐數</label><input type="number" min="0" data-meal="${m.key}" data-k="count" placeholder="0"></div>
-      <div class="row"><label>營業額</label><input type="number" min="0" data-meal="${m.key}" data-k="amount" placeholder="0"></div>
-    `;
+    fields.innerHTML = renderMealFields(m);
     tile.addEventListener('click', e=>{
-      if (e.target.tagName === 'INPUT') return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
       tile.classList.toggle('on');
       recalc();
     });
     host.appendChild(tile);
     host.appendChild(fields);
   });
+  // Wire inputs
   host.querySelectorAll('input[type=number]').forEach(inp =>
     inp.addEventListener('input', recalc)
   );
+  // Wire 預訂餐 pencil override
+  host.querySelectorAll('.amount-override').forEach(btn =>
+    btn.addEventListener('click', ()=>{
+      const meal = btn.dataset.meal;
+      const amtInp = document.querySelector(`[data-meal="${meal}"][data-k="amount"]`);
+      const cur = amtInp.value || amtInp.placeholder || '0';
+      const v = prompt('輸入修正後的營業額：', cur);
+      if (v !== null){
+        amtInp.value = String(parseInt(v, 10) || 0);
+        amtInp.dataset.manual = '1';
+        recalc();
+      }
+    })
+  );
+}
+
+function renderMealFields(m){
+  if (m.type === 'muscle'){
+    const rate = getMuscleRate();
+    return `
+      <div class="small" style="margin-bottom:6px">本日定價：小 $${rate.small} / 大 $${rate.large}（自動依星期）</div>
+      <div class="row"><label>小</label><input type="number" min="0" data-meal="${m.key}" data-k="small" placeholder="0"></div>
+      <div class="row"><label>大</label><input type="number" min="0" data-meal="${m.key}" data-k="large" placeholder="0"></div>
+      <div class="row"><label>餐數（自動）</label><div class="val" data-display="${m.key}-count">--</div></div>
+      <div class="row"><label>營業額（自動）</label><div class="val" data-display="${m.key}-amount">--</div></div>
+      <input type="hidden" data-meal="${m.key}" data-k="count" value="0">
+      <input type="hidden" data-meal="${m.key}" data-k="amount" value="0">
+    `;
+  }
+  if (m.type === 'preorder'){
+    return `
+      <div class="small" style="margin-bottom:6px">單價 $${PREORDER_PRICE} / 餐（可手動修正）</div>
+      <div class="row"><label>餐數</label><input type="number" min="0" data-meal="${m.key}" data-k="count" placeholder="0"></div>
+      <div class="row">
+        <label>營業額</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="number" min="0" data-meal="${m.key}" data-k="amount" placeholder="0">
+          <button type="button" class="amount-override" data-meal="${m.key}" title="修正營業額">✏️</button>
+        </div>
+      </div>
+    `;
+  }
+  // basic
+  return `
+    <div class="row"><label>餐數</label><input type="number" min="0" data-meal="${m.key}" data-k="count" placeholder="0"></div>
+    <div class="row"><label>營業額</label><input type="number" min="0" data-meal="${m.key}" data-k="amount" placeholder="0"></div>
+  `;
 }
 
 // === Persons ===
@@ -371,7 +435,14 @@ function buildPersonTile(name, group, isOther){
   const otherInput = isOther ? `
     <div class="field" style="grid-column:1/-1">
       <label>姓名</label>
-      <input type="text" data-k="name" value="${name === '其他人員' ? '' : name}" placeholder="手填姓名">
+      <input type="text" data-k="name" value="${name === '其他人員' ? '' : name}" placeholder="輸入姓名">
+    </div>
+    <div class="field" style="grid-column:1/-1">
+      <label>身份</label>
+      <div class="grp-toggle">
+        <button type="button" data-grp="正職" class="${group==='正職'?'on':''}">正職</button>
+        <button type="button" data-grp="兼職" class="${group==='兼職'?'on':''}">兼職</button>
+      </div>
     </div>` : '';
   fields.innerHTML = `
     <div class="grid">
@@ -525,6 +596,35 @@ window.fmtT = fmtT;
 
 // === Calc ===
 function recalc(){
+  // First pass: compute derived values for muscle / preorder
+  MEALS.forEach(m=>{
+    if (m.type === 'muscle'){
+      const rate = getMuscleRate();
+      const s = parseInt(document.querySelector(`[data-meal="${m.key}"][data-k="small"]`)?.value || "0", 10);
+      const l = parseInt(document.querySelector(`[data-meal="${m.key}"][data-k="large"]`)?.value || "0", 10);
+      const count = s + l;
+      const amount = s * rate.small + l * rate.large;
+      const cInp = document.querySelector(`[data-meal="${m.key}"][data-k="count"]`);
+      const aInp = document.querySelector(`[data-meal="${m.key}"][data-k="amount"]`);
+      if (cInp) cInp.value = count;
+      if (aInp) aInp.value = amount;
+      const cDsp = document.querySelector(`[data-display="${m.key}-count"]`);
+      const aDsp = document.querySelector(`[data-display="${m.key}-amount"]`);
+      if (cDsp) cDsp.textContent = count > 0 ? (count + ' 份') : '--';
+      if (aDsp) aDsp.textContent = amount > 0 ? fmtNT(amount) : '--';
+    } else if (m.type === 'preorder'){
+      const cInp = document.querySelector(`[data-meal="${m.key}"][data-k="count"]`);
+      const aInp = document.querySelector(`[data-meal="${m.key}"][data-k="amount"]`);
+      if (!cInp || !aInp) return;
+      const count = parseInt(cInp.value || "0", 10);
+      // If amount was manually overridden, don't recalc
+      if (aInp.dataset.manual !== '1'){
+        aInp.value = count * PREORDER_PRICE;
+        aInp.placeholder = String(count * PREORDER_PRICE);
+      }
+    }
+  });
+
   let total = 0;
   document.querySelectorAll('.meal-tile.on').forEach(tile=>{
     const k = tile.dataset.key;
@@ -581,28 +681,29 @@ function attachHandlers(){
     const v = prompt("請輸入本月累積營業額（不含今日）：", String(cur));
     if (v !== null) { setMonth(v); recalc(); }
   });
-  const otherPicker = document.getElementById('otherGrpPicker');
   document.getElementById('addOther').addEventListener('click', ()=>{
-    otherPicker.style.display = otherPicker.style.display === 'none' ? 'block' : 'none';
-  });
-  otherPicker.querySelectorAll('.grp-pick').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const grp = btn.dataset.grp;
-      otherPicker.style.display = 'none';
-      const host = document.getElementById('personList');
-      const w = buildPersonTile('其他人員', grp, true);
-      host.appendChild(w);
-      const tile = w.querySelector('.person-tile');
-      const rmBtn = tile && tile.querySelector('.person-remove');
-      if (rmBtn) rmBtn.addEventListener('click', ev=>{
-        ev.stopPropagation();
-        w.remove();
-        validate();
-      });
-      // Auto-open the new tile so user immediately fills name
-      tile.classList.add('on');
+    const host = document.getElementById('personList');
+    // Default to 兼職; user can switch via inline toggle
+    const w = buildPersonTile('其他人員', '兼職', true);
+    host.appendChild(w);
+    const tile = w.querySelector('.person-tile');
+    const rmBtn = tile && tile.querySelector('.person-remove');
+    if (rmBtn) rmBtn.addEventListener('click', ev=>{
+      ev.stopPropagation();
+      w.remove();
       validate();
     });
+    // Wire 正職/兼職 inline toggle
+    const fields = w.querySelector('.person-fields');
+    fields.querySelectorAll('.grp-toggle button').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        fields.querySelectorAll('.grp-toggle button').forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        tile.dataset.group = b.dataset.grp;
+      });
+    });
+    tile.classList.add('on');
+    validate();
   });
   document.getElementById('btnSubmit').addEventListener('click', submit);
   document.getElementById('manageRecords').addEventListener('click', openRecords);
@@ -679,7 +780,12 @@ function collect(){
     const meta = MEALS.find(m=>m.key===k);
     const count = parseInt(document.querySelector(`[data-meal="${k}"][data-k="count"]`).value || "0", 10);
     const amount = parseInt(document.querySelector(`[data-meal="${k}"][data-k="amount"]`).value || "0", 10);
-    meals.push({ key:k, label:meta.label, count, amount });
+    const entry = { key:k, label:meta.label, count, amount, type: meta.type };
+    if (meta.type === 'muscle'){
+      entry.small = parseInt(document.querySelector(`[data-meal="${k}"][data-k="small"]`)?.value || "0", 10);
+      entry.large = parseInt(document.querySelector(`[data-meal="${k}"][data-k="large"]`)?.value || "0", 10);
+    }
+    meals.push(entry);
   });
   const persons = [];
   document.querySelectorAll('.person-tile.on').forEach(tile=>{
@@ -722,6 +828,10 @@ function buildText(d){
   d.meals.forEach(m => {
     lines.push('');
     lines.push('【' + m.label + '】');
+    if (m.type === 'muscle'){
+      lines.push('小：' + (m.small || 0));
+      lines.push('大：' + (m.large || 0));
+    }
     lines.push('餐數：' + m.count);
     lines.push('營業額：' + m.amount);
   });
