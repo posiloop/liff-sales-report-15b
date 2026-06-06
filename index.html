@@ -1011,7 +1011,15 @@ function buildText(d){
   lines.push('');
   lines.push('今日總工時：' + fmtHr(d.dayHours) + 'h');
   lines.push('當月總工時加總：' + fmtHr(d.monthHours + d.dayHours) + 'h');
-  return lines.join('\n');
+  // 防 LINE 自動 linkify (撥號 / 日期 / 時間 / URL)
+  // 在 數字-X-數字 模式中間插入零寬空白 (U+200B) — 視覺上看不見, 但 LINE 不會 match 成可點連結
+  // iOS + Android + Win 都通用
+  let out = lines.join('\n');
+  out = out.replace(/(\d):(\d)/g, '$1​:$2');     // 09:00 / 9:30 → break
+  out = out.replace(/(\d)\.(\d)/g, '$1​.$2');    // 115.06.06 / 0.5h → break
+  out = out.replace(/(\d)-(\d)/g, '$1​-$2');     // 09:00-20:00 / time ranges
+  out = out.replace(/(\d)\/(\d)/g, '$1​/$2');    // 06/06 date patterns
+  return out;
 }
 
 async function submit(){
