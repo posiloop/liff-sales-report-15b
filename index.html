@@ -135,12 +135,6 @@
 </div>
 
 <div class="card">
-  <h2>👥 來客數 / 客單價</h2>
-  <div class="row"><label>本日來客數</label><input type="number" min="0" id="guestCount" placeholder="0"></div>
-  <div class="row"><label>客單價（自動）</label><div class="val" id="atvDisp">--</div></div>
-</div>
-
-<div class="card">
   <h2>🍱 各餐別</h2>
   <div class="small" style="margin-bottom:8px">點 + 展開填寫，燃肌餐／預訂餐金額自動算</div>
 
@@ -150,30 +144,23 @@
 </div>
 
 <div class="card">
-  <h2>⏰ 工時</h2>
-  <div class="row"><label>今日總工時</label><div class="val" id="dayHoursDisp">--</div></div>
-  <div class="monthly-row">
-    <div>
-      <div class="small">本月（含今日）累積工時</div>
-      <div class="val" id="monthHoursSum" style="font-size:18px">--</div>
-    </div>
-    <button id="fixMonthHours">修正</button>
-  </div>
+  <h2>👥 來客數 / 客單價（自動）</h2>
+  <div class="row"><label>本日來客數</label><div class="val" id="guestCount">--</div></div>
+  <div class="row"><label>客單價</label><div class="val" id="atvDisp">--</div></div>
 </div>
 
 <div class="card">
   <h2>💰 當月營業額</h2>
   <div class="monthly-row">
     <div>
-      <div class="small">本月（含今日）累積</div>
+      <div class="small">本月（不含今日）累積</div>
       <div class="val" id="monthSum" style="font-size:18px">$0</div>
     </div>
     <div style="display:flex;gap:6px;flex-direction:column">
-      <button id="manageRecords">📝 修改/刪除前一筆</button>
+      <button id="manageRecords">刪除前一筆</button>
       <button id="fixMonth">修正</button>
     </div>
   </div>
-  <div class="small" id="monthSrcNote">⚠️ 累積值存本機；webhook 部署後變雲端同步</div>
 </div>
 
 <div class="card">
@@ -182,6 +169,21 @@
 
   <div id="personList"></div>
   <button id="addOther" type="button">+ 其他人員</button>
+</div>
+
+<div class="card">
+  <h2>⏰ 工時</h2>
+  <div class="row"><label>今日總工時</label><div class="val" id="dayHoursDisp">--</div></div>
+  <div class="monthly-row">
+    <div>
+      <div class="small">本月（不含今日）累積工時</div>
+      <div class="val" id="monthHoursSum" style="font-size:18px">--</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-direction:column">
+      <button id="manageRecordsHours">刪除前一筆</button>
+      <button id="fixMonthHours">修正</button>
+    </div>
+  </div>
 </div>
 
 <!-- Number-keyboard input modal -->
@@ -715,20 +717,24 @@ function recalc(){
   });
 
   let total = 0;
+  let totalCount = 0;
   document.querySelectorAll('.meal-tile.on').forEach(tile=>{
     const k = tile.dataset.key;
     const amt = parseInt(document.querySelector(`[data-meal="${k}"][data-k="amount"]`).value || "0", 10);
+    const cnt = parseInt(document.querySelector(`[data-meal="${k}"][data-k="count"]`).value || "0", 10);
     total += amt;
+    totalCount += cnt;
   });
   dayTotal = total;
   document.getElementById('daySum').textContent = fmtNT(total);
 
-  const guests = parseInt(document.getElementById('guestCount').value || "0", 10);
-  document.getElementById('atvDisp').textContent = guests > 0 ? fmtNT(Math.round(total / guests)) : "--";
+  // Auto guest count = sum of meal counts
+  document.getElementById('guestCount').textContent = totalCount > 0 ? totalCount + ' 人' : '--';
+  // ATV = total amount / total count
+  document.getElementById('atvDisp').textContent = totalCount > 0 ? fmtNT(Math.round(total / totalCount)) : "--";
 
-  // monthly preview = saved + today
-  const monthly = getMonth() + total;
-  document.getElementById('monthSum').textContent = fmtNT(monthly);
+  // monthly累積 = 不含當日 (純伺服器值)
+  document.getElementById('monthSum').textContent = fmtNT(getMonth());
 
   // Day hours = sum of selected persons' worked + OT
   let dayH = 0;
@@ -747,7 +753,8 @@ function recalc(){
     dayH += worked + ot;
   });
   document.getElementById('dayHoursDisp').textContent = dayH > 0 ? dayH.toFixed(1) + ' h' : '--';
-  document.getElementById('monthHoursSum').textContent = (getMonthHours() + dayH).toFixed(1) + ' h';
+  // monthly工時 = 不含當日 (純伺服器值)
+  document.getElementById('monthHoursSum').textContent = getMonthHours().toFixed(1) + ' h';
 
   validate();
 }
@@ -758,21 +765,19 @@ function refreshMonthly(){
 
 function validate(){
   const btn = document.getElementById('btnSubmit');
-  const guests = parseInt(document.getElementById('guestCount').value || "0", 10);
   const anyMeal = document.querySelectorAll('.meal-tile.on').length > 0;
   const anyPerson = document.querySelectorAll('.person-tile.on').length > 0;
-  if (guests > 0 && anyMeal && anyPerson){
+  if (anyMeal && anyPerson){
     btn.disabled = false;
     btn.textContent = "送出回報";
   } else {
     btn.disabled = true;
-    btn.textContent = "請先填完必填欄位";
+    btn.textContent = "請先選餐別 + 員工";
   }
 }
 
 // === Handlers ===
 function attachHandlers(){
-  document.getElementById('guestCount').addEventListener('input', recalc);
   document.getElementById('editDateBtn').addEventListener('click', ()=>{
     const inp = document.getElementById('dateInput');
     inp.style.display = 'inline-block';
@@ -820,6 +825,8 @@ function attachHandlers(){
   });
   document.getElementById('btnSubmit').addEventListener('click', submit);
   document.getElementById('manageRecords').addEventListener('click', openRecords);
+  const mrh = document.getElementById('manageRecordsHours');
+  if (mrh) mrh.addEventListener('click', openRecords);
 }
 
 async function openRecords(){
@@ -888,7 +895,6 @@ window.closeRecords = closeRecords;
 
 // === Collect + Submit ===
 function collect(){
-  const guests = parseInt(document.getElementById('guestCount').value || "0", 10);
   const meals = [];
   document.querySelectorAll('.meal-tile.on').forEach(tile=>{
     const k = tile.dataset.key;
@@ -924,11 +930,12 @@ function collect(){
     persons.push({ name, group: tile.dataset.group, start: startStr, end: endStr, rest, ot, worked: Math.max(0, worked) });
   });
   const dayAmt = meals.reduce((s,m)=>s+m.amount, 0);
+  const guests = meals.reduce((s,m)=>s + (m.count || 0), 0);
   const atv = guests > 0 ? Math.round(dayAmt / guests) : 0;
-  const monthTotal = getMonth() + dayAmt;
+  const monthTotal = getMonth();   // 不含當日
   // total hours = sum of worked + ot
   const dayHours = persons.reduce((s,p)=> s + p.worked + (p.ot || 0), 0);
-  const monthHours = getMonthHours() + dayHours;
+  const monthHours = getMonthHours();   // 不含當日
   return {
     date: STATE.roc, site:"中科台積電15B", reporter: profile.displayName,
     guests, atv, meals, persons, dayAmt, monthTotal, dayHours, monthHours
@@ -1001,10 +1008,10 @@ async function submit(){
         });
         const j = await r.json();
         if (j.ok){
+          // Cache the NEW server values (含今日 after our POST) for next UI refresh
           serverMonthCache = Number(j.monthTotal) || 0;
           serverHoursCache = Number(j.monthHours) || 0;
-          d.monthTotal = serverMonthCache;
-          d.monthHours = serverHoursCache;
+          // d.monthTotal / d.monthHours 保留為提交前的值 (不含今日)，per建全
         }
       } catch(e){ console.warn('webhook submit failed', e); }
     }
