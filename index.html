@@ -934,15 +934,14 @@ function collect(){
 function buildText(d){
   const lines = [];
   lines.push('日期：' + d.date);
-  lines.push('場域：' + d.site);
-  lines.push('填寫人：' + d.reporter);
+  lines.push('場所：' + d.site);
   lines.push('');
   lines.push('來客數：' + d.guests);
   lines.push('客單價(當日業績/來客數)：' + d.atv);
   lines.push('今日營業額：' + d.dayAmt);
   lines.push('當月營業額加總：' + (d.monthTotal + d.dayAmt));
   lines.push('---');
-  // Filter out meals where both count and amount are 0 (user toggled on but didn't fill)
+  // Filter out meals where both count and amount are 0
   const validMeals = d.meals.filter(m => (m.count || 0) > 0 || (m.amount || 0) > 0);
   validMeals.forEach(m => {
     lines.push('【' + (m.emoji || '') + ' ' + m.label + '】');
@@ -960,7 +959,6 @@ function buildText(d){
     (byGroup[p.group] = byGroup[p.group] || []).push(p);
   });
   Object.keys(byGroup).forEach(g => {
-    lines.push('');
     lines.push(g + '：');
     byGroup[g].forEach(p => {
       const totalH = (p.worked + (p.ot || 0));
