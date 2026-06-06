@@ -127,7 +127,6 @@
     <div class="val" id="dateDisp" style="display:flex;align-items:center;gap:6px">
       <span id="dateText">--</span>
       <button type="button" id="editDateBtn" class="icon-btn" title="修改日期">✏️</button>
-      <input type="date" id="dateInput" style="display:none">
     </div>
   </div>
   <!-- Hidden holders so JS keeps working -->
@@ -288,7 +287,6 @@ function updateDate(d){
   serverHoursCache = null;
   document.getElementById('dateText').textContent = STATE.roc;
   document.getElementById('hdrSub').textContent = STATE.roc;
-  document.getElementById('dateInput').value = STATE.iso;
   // Refresh muscle pricing (depends on weekday) — but preserve existing input values
   refreshMuscleHints();
   // Refresh server month
@@ -365,7 +363,6 @@ function showSuccessScreen(){
 async function boot(){
   seedMonth();
   document.getElementById('dateText').textContent = STATE.roc;
-  document.getElementById('dateInput').value = STATE.iso;
   document.getElementById('hdrSub').textContent = STATE.roc;
   await Promise.all([initLiff(), loadEmployees()]);
   renderMeals();
@@ -792,23 +789,24 @@ function validate(){
 // === Handlers ===
 function attachHandlers(){
   document.getElementById('editDateBtn').addEventListener('click', ()=>{
-    const inp = document.getElementById('dateInput');
-    // 改用 absolute + opacity 隱藏 (但仍可觸發 picker)
-    inp.style.position = 'absolute';
-    inp.style.opacity = '0';
-    inp.style.pointerEvents = 'none';
-    inp.style.display = 'inline-block';
-    inp.focus();
-    if (inp.showPicker) try { inp.showPicker(); } catch(e){}
-  });
-  document.getElementById('dateInput').addEventListener('change', e=>{
-    const v = e.target.value;
-    if (v) updateDate(new Date(v + 'T00:00:00'));
-    e.target.style.display = 'none';
-  });
-  // blur / cancel：原本未變更也會 fire blur
-  document.getElementById('dateInput').addEventListener('blur', e=>{
-    e.target.style.display = 'none';
+    // 建一個 ephemeral input，使用完立即移除 — 確保畫面上不會有殘留輸入框
+    const inp = document.createElement('input');
+    inp.type = 'date';
+    inp.value = STATE.iso;
+    inp.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none';
+    document.body.appendChild(inp);
+    const cleanup = () => { try { inp.remove(); } catch(_){} };
+    inp.addEventListener('change', () => {
+      if (inp.value) updateDate(new Date(inp.value + 'T00:00:00'));
+      cleanup();
+    });
+    inp.addEventListener('blur', cleanup);
+    // 安全 fallback: 5 秒後一定 cleanup
+    setTimeout(cleanup, 5000);
+    setTimeout(()=>{
+      inp.focus();
+      if (inp.showPicker) try{ inp.showPicker(); } catch(e){}
+    }, 0);
   });
   document.getElementById('fixMonth').addEventListener('click', ()=>{
     const cur = getMonth();
