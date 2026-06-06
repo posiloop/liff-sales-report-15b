@@ -257,6 +257,10 @@ function rocFromDate(d){
   return { roc:`${y}.${m}.${dd} (${w})`, ym:`${y}_${m}`, iso: `${d.getFullYear()}-${m}-${dd}` };
 }
 function fmtNT(n){ return "$" + Number(n||0).toLocaleString('zh-TW'); }
+function fmtHr(v){
+  const n = Number(v) || 0;
+  return (n % 1 === 0) ? String(Math.round(n)) : n.toFixed(1);
+}
 
 // === State (mutable date) ===
 let STATE = rocFromDate(new Date());
@@ -762,9 +766,9 @@ function recalc(){
     dayH += worked + ot;
   });
   const dhd = document.getElementById('dayHoursDisp');
-  if (dhd) dhd.textContent = dayH > 0 ? dayH.toFixed(1) + ' h' : '--';
+  if (dhd) dhd.textContent = dayH > 0 ? fmtHr(dayH) + ' h' : '--';
   // monthly工時 = 不含當日 (純伺服器值)
-  document.getElementById('monthHoursSum').textContent = getMonthHours().toFixed(1) + ' h';
+  document.getElementById('monthHoursSum').textContent = fmtHr(getMonthHours()) + ' h';
 
   validate();
 }
@@ -870,7 +874,7 @@ async function openRecords(){
     j.items.forEach(item => {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px';
-      const hours = Number(item.dayHours || 0).toFixed(1);
+      const hours = fmtHr(item.dayHours);
       row.innerHTML = `
         <div>
           <div style="font-weight:600">${item.date}</div>
@@ -989,12 +993,12 @@ function buildText(d){
     lines.push(g + '：');
     byGroup[g].forEach(p => {
       const totalH = (p.worked + (p.ot || 0));
-      const otPart = p.ot > 0 ? ('加班:' + p.ot + 'h/') : '';
-      lines.push(p.name + '：' + p.start + '-' + p.end + '（休息:' + p.rest + 'h/' + otPart + '工時:' + totalH.toFixed(1) + 'h）');
+      const otPart = p.ot > 0 ? ('加班:' + fmtHr(p.ot) + 'h/') : '';
+      lines.push(p.name + '：' + p.start + '-' + p.end + '（休息:' + fmtHr(p.rest) + 'h/' + otPart + '工時:' + fmtHr(totalH) + 'h）');
     });
   });
-  lines.push('今日總工時：' + d.dayHours.toFixed(1) + 'h');
-  lines.push('當月總工時加總：' + (d.monthHours + d.dayHours).toFixed(1) + 'h');
+  lines.push('今日總工時：' + fmtHr(d.dayHours) + 'h');
+  lines.push('當月總工時加總：' + fmtHr(d.monthHours + d.dayHours) + 'h');
   return lines.join('\n');
 }
 
