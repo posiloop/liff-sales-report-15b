@@ -239,8 +239,8 @@
 
 <script>
 const LIFF_ID = "2010233112-XCCgtapU";
-// Apps Script Web App URL (set after建全 deploys the script + 回 webhook URL)
-const WEBHOOK_URL = "";  // ← 部署完 Apps Script 後貼這裡
+// Apps Script Web App URL (deployed 2026-06-06)
+const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyD9k3yTJpkZIq0DAmh4yS7W2OQvJwlDUJCUy16rii2ZeqC-p34b40ejog_lIywexxH/exec";
 
 // 燃肌餐定價（每兩個月可能更新；改這張表即可）
 // 鍵 = ISO 星期 (1=Mon, 2=Tue, ..., 5=Fri)
@@ -287,7 +287,12 @@ async function fetchMonth(ym){
   try{
     const r = await fetch(`${WEBHOOK_URL}?ym=${encodeURIComponent(ym)}`, { method:'GET' });
     const j = await r.json();
-    return j.ok ? Number(j.monthTotal) || 0 : null;
+    if (j.ok){
+      // populate both caches
+      serverHoursCache = Number(j.monthHours) || 0;
+      return Number(j.monthTotal) || 0;
+    }
+    return null;
   } catch(e){ console.warn('fetchMonth failed', e); return null; }
 }
 function updateDate(d){
@@ -863,7 +868,9 @@ async function openRecords(){
           const dj = await dr.json();
           if (dj.ok){
             serverMonthCache = Number(dj.monthTotal) || 0;
+            serverHoursCache = Number(dj.monthHours) || 0;
             refreshMonthly();
+            recalc();
             openRecords();   // refresh list
           } else {
             alert('刪除失敗：' + (dj.error || 'unknown'));
@@ -989,13 +996,15 @@ async function submit(){
             action:'submit',
             date: d.date, ym: STATE.ym, site: d.site,
             reporter: d.reporter, userId: profile.userId || '',
-            dayAmt: d.dayAmt
+            dayAmt: d.dayAmt, dayHours: d.dayHours
           })
         });
         const j = await r.json();
         if (j.ok){
           serverMonthCache = Number(j.monthTotal) || 0;
-          d.monthTotal = serverMonthCache;   // refresh with server-accurate value
+          serverHoursCache = Number(j.monthHours) || 0;
+          d.monthTotal = serverMonthCache;
+          d.monthHours = serverHoursCache;
         }
       } catch(e){ console.warn('webhook submit failed', e); }
     }
