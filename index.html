@@ -125,9 +125,12 @@
       <div class="small">本月（含今日）累積</div>
       <div class="val" id="monthSum" style="font-size:18px">$0</div>
     </div>
-    <button id="fixMonth">修正</button>
+    <div style="display:flex;gap:6px;flex-direction:column">
+      <button id="manageRecords">📝 修改/刪除前一筆</button>
+      <button id="fixMonth">修正</button>
+    </div>
   </div>
-  <div class="small">⚠️ 累積值存在這隻手機本機。若換手機 / 沒回報 → 按「修正」手填正確金額</div>
+  <div class="small" id="monthSrcNote">⚠️ 累積值存本機；webhook 部署後變雲端同步</div>
 </div>
 
 <div class="card">
@@ -136,6 +139,17 @@
 
   <div id="personList"></div>
   <button id="addOther" type="button">+ 其他人員（手填）</button>
+</div>
+
+<!-- Records management modal -->
+<div id="recordsModal" class="tp-modal" style="display:none">
+  <div class="tp-sheet" style="max-width:380px">
+    <div class="tp-title">我這個月的回報</div>
+    <div id="recordsList" style="max-height:340px;overflow-y:auto;padding:10px"></div>
+    <div class="tp-actions">
+      <button type="button" class="tp-cancel" onclick="closeRecords()">關閉</button>
+    </div>
+  </div>
 </div>
 
 <!-- Custom wheel time picker modal -->
@@ -164,6 +178,9 @@
 
 <script>
 const LIFF_ID = "2010233112-XCCgtapU";
+// Apps Script Web App URL (set after建全 deploys the script + 回 webhook URL)
+// 暫時 placeholder：如果是空字串就 fallback localStorage
+const WEBHOOK_URL = "";  // ← 部署完 Apps Script 後貼這裡
 const MEALS = [
   { key:"lunch",  label:"午餐",   emoji:"🍱" },
   { key:"dinner", label:"晚餐",   emoji:"🍽️" },
@@ -184,14 +201,29 @@ function fmtNT(n){ return "$" + Number(n||0).toLocaleString('zh-TW'); }
 // === State (mutable date) ===
 let STATE = rocFromDate(new Date());
 let MONTH_KEY = "monthly_total_" + STATE.ym;
-function getMonth(){ return parseInt(localStorage.getItem(MONTH_KEY) || "0", 10); }
+let serverMonthCache = null;  // latest fetched server month total (null = unknown / use local fallback)
+function getMonth(){
+  if (serverMonthCache != null) return serverMonthCache;
+  return parseInt(localStorage.getItem(MONTH_KEY) || "0", 10);
+}
 function setMonth(v){ localStorage.setItem(MONTH_KEY, String(Math.max(0, parseInt(v,10) || 0))); }
+async function fetchMonth(ym){
+  if (!WEBHOOK_URL) return null;   // fallback localStorage
+  try{
+    const r = await fetch(`${WEBHOOK_URL}?ym=${encodeURIComponent(ym)}`, { method:'GET' });
+    const j = await r.json();
+    return j.ok ? Number(j.monthTotal) || 0 : null;
+  } catch(e){ console.warn('fetchMonth failed', e); return null; }
+}
 function updateDate(d){
   STATE = rocFromDate(d);
   MONTH_KEY = "monthly_total_" + STATE.ym;
+  serverMonthCache = null;
   document.getElementById('dateText').textContent = STATE.roc;
   document.getElementById('hdrSub').textContent = STATE.roc;
   document.getElementById('dateInput').value = STATE.iso;
+  // Refresh server month
+  fetchMonth(STATE.ym).then(v=>{ if (v != null) serverMonthCache = v; recalc(); });
   recalc();
 }
 
@@ -208,6 +240,9 @@ async function boot(){
   renderMeals();
   renderPersons();
   attachHandlers();
+  // Fetch current month total from server (if WEBHOOK_URL configured)
+  const v = await fetchMonth(STATE.ym);
+  if (v != null) { serverMonthCache = v; }
   refreshMonthly();
 }
 
@@ -511,7 +546,70 @@ function attachHandlers(){
     });
   });
   document.getElementById('btnSubmit').addEventListener('click', submit);
+  document.getElementById('manageRecords').addEventListener('click', openRecords);
 }
+
+async function openRecords(){
+  const modal = document.getElementById('recordsModal');
+  const list = document.getElementById('recordsList');
+  modal.style.display = 'flex';
+  list.innerHTML = '<div class="small" style="text-align:center;padding:20px">載入中…</div>';
+  if (!WEBHOOK_URL){
+    list.innerHTML = '<div class="small" style="color:var(--warn);text-align:center;padding:20px">Webhook 尚未部署，無法查詢雲端紀錄</div>';
+    return;
+  }
+  try{
+    const r = await fetch(`${WEBHOOK_URL}?action=list&ym=${encodeURIComponent(STATE.ym)}&userId=${encodeURIComponent(profile.userId||'')}`);
+    const j = await r.json();
+    if (!j.ok){
+      list.innerHTML = '<div class="small" style="color:var(--warn);padding:20px">' + (j.error || '查詢失敗') + '</div>';
+      return;
+    }
+    if (!j.items || !j.items.length){
+      list.innerHTML = '<div class="small" style="text-align:center;padding:20px">這個月還沒有你的回報紀錄</div>';
+      return;
+    }
+    list.innerHTML = '';
+    j.items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px';
+      row.innerHTML = `
+        <div>
+          <div style="font-weight:600">${item.date}</div>
+          <div class="small">${fmtNT(item.dayAmt)}</div>
+        </div>
+        <button class="rec-del" data-id="${item.id}" style="background:transparent;border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer">刪除</button>
+      `;
+      list.appendChild(row);
+    });
+    list.querySelectorAll('.rec-del').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if (!confirm('確定要刪除這筆？月累積會跟著扣回。')) return;
+        btn.disabled = true; btn.textContent = '刪除中…';
+        try{
+          const dr = await fetch(WEBHOOK_URL, {
+            method:'POST',
+            headers:{ 'Content-Type':'text/plain' },
+            body: JSON.stringify({ action:'delete', ym: STATE.ym, id: btn.dataset.id })
+          });
+          const dj = await dr.json();
+          if (dj.ok){
+            serverMonthCache = Number(dj.monthTotal) || 0;
+            refreshMonthly();
+            openRecords();   // refresh list
+          } else {
+            alert('刪除失敗：' + (dj.error || 'unknown'));
+            btn.disabled = false; btn.textContent = '刪除';
+          }
+        } catch(e){ alert('刪除錯誤：' + e); btn.disabled = false; btn.textContent = '刪除'; }
+      });
+    });
+  } catch(e){
+    list.innerHTML = '<div class="small" style="color:var(--warn);padding:20px">查詢錯誤：' + e + '</div>';
+  }
+}
+function closeRecords(){ document.getElementById('recordsModal').style.display = 'none'; }
+window.closeRecords = closeRecords;
 
 // === Collect + Submit ===
 function collect(){
@@ -595,6 +693,26 @@ async function submit(){
   errBox.textContent = "";
   try{
     const d = collect();
+    // 1) Post to Apps Script backend (record + get new month total)
+    if (WEBHOOK_URL){
+      try{
+        const r = await fetch(WEBHOOK_URL, {
+          method:'POST',
+          headers:{ 'Content-Type':'text/plain' },   // text/plain avoids preflight in Apps Script
+          body: JSON.stringify({
+            action:'submit',
+            date: d.date, ym: STATE.ym, site: d.site,
+            reporter: d.reporter, userId: profile.userId || '',
+            dayAmt: d.dayAmt
+          })
+        });
+        const j = await r.json();
+        if (j.ok){
+          serverMonthCache = Number(j.monthTotal) || 0;
+          d.monthTotal = serverMonthCache;   // refresh with server-accurate value
+        }
+      } catch(e){ console.warn('webhook submit failed', e); }
+    }
     const text = buildText(d);
     if (!liff || !liff.sendMessages){
       errBox.textContent = "LIFF SDK 未載入，無法送出";
@@ -614,7 +732,8 @@ async function submit(){
         payloadStr.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</textarea></details>';
       return;
     }
-    setMonth(getMonth() + d.dayAmt);
+    // local fallback bump (in case webhook absent)
+    if (serverMonthCache == null) setMonth(getMonth() + d.dayAmt);
     const btn = document.getElementById('btnSubmit');
     btn.textContent = "✓ 已送出";
     btn.disabled = true;
