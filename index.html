@@ -890,7 +890,7 @@ function collect(){
     const meta = MEALS.find(m=>m.key===k);
     const count = parseInt(document.querySelector(`[data-meal="${k}"][data-k="count"]`).value || "0", 10);
     const amount = parseInt(document.querySelector(`[data-meal="${k}"][data-k="amount"]`).value || "0", 10);
-    const entry = { key:k, label:meta.label, count, amount, type: meta.type };
+    const entry = { key:k, label:meta.label, emoji:meta.emoji, count, amount, type: meta.type };
     if (meta.type === 'muscle'){
       entry.small = parseInt(document.querySelector(`[data-meal="${k}"][data-k="small"]`)?.value || "0", 10);
       entry.large = parseInt(document.querySelector(`[data-meal="${k}"][data-k="large"]`)?.value || "0", 10);
@@ -946,7 +946,7 @@ function buildText(d){
   const validMeals = d.meals.filter(m => (m.count || 0) > 0 || (m.amount || 0) > 0);
   validMeals.forEach(m => {
     lines.push('');
-    lines.push('【' + m.label + '】');
+    lines.push('【' + (m.emoji || '') + ' ' + m.label + '】');
     if (m.type === 'muscle'){
       lines.push('小：' + (m.small || 0));
       lines.push('大：' + (m.large || 0));
