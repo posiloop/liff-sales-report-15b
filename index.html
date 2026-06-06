@@ -53,6 +53,17 @@
   .monthly-row{background:#fffbe6;border:1px solid #f3d488;border-radius:8px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
   .monthly-row button{background:none;border:1px solid #d29400;color:#a86c00;padding:4px 10px;border-radius:6px;font:inherit;font-size:12px}
   .pick-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .icon-btn{background:transparent;border:none;font-size:16px;cursor:pointer;padding:2px 4px;color:var(--accent)}
+  #dateInput{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
+  input[type=time].time-wheel{font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:110px;text-align:center;background:#fff;font-size:16px}
+  .hh-stepper{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+  .hh-stepper input[type=number]{width:60px;padding:6px;text-align:center;font:inherit;border:1px solid var(--line);border-radius:6px}
+  .hh-stepper button{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:18px;font:inherit;cursor:pointer}
+  .hh-unit{font-size:13px;color:var(--muted)}
+  .ot-wrap{margin-top:8px}
+  .ot-toggle{background:transparent;border:1px dashed var(--line);border-radius:8px;padding:6px 12px;color:var(--accent);font:inherit;cursor:pointer;font-size:13px}
+  .ot-field{margin-top:8px}
+  .ot-field label{display:block;color:var(--muted);font-size:13px;margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -62,7 +73,13 @@
 
 <div class="card">
   <h2>📋 基本資訊</h2>
-  <div class="row"><label>日期</label><div class="val" id="dateDisp">--</div></div>
+  <div class="row"><label>日期</label>
+    <div class="val" id="dateDisp" style="display:flex;align-items:center;gap:6px">
+      <span id="dateText">--</span>
+      <button type="button" id="editDateBtn" class="icon-btn" title="修改日期">✏️</button>
+      <input type="date" id="dateInput" style="display:none">
+    </div>
+  </div>
   <div class="row"><label>場域</label><div class="val">中科台積電15B</div></div>
   <div class="row"><label>填寫人</label><div class="val" id="userDisp">--</div></div>
 </div>
@@ -118,21 +135,28 @@ const MEALS = [
 ];
 
 // === Date helpers ===
-function todayROC(){
-  const d = new Date();
+function rocFromDate(d){
   const y = d.getFullYear() - 1911;
   const m = String(d.getMonth()+1).padStart(2,'0');
   const dd = String(d.getDate()).padStart(2,'0');
   const w = ['日','一','二','三','四','五','六'][d.getDay()];
-  return { roc:`${y}.${m}.${dd} (${w})`, ym:`${y}_${m}` };
+  return { roc:`${y}.${m}.${dd} (${w})`, ym:`${y}_${m}`, iso: `${d.getFullYear()}-${m}-${dd}` };
 }
 function fmtNT(n){ return "$" + Number(n||0).toLocaleString('zh-TW'); }
 
-// === Local storage for monthly accumulation ===
-const STATE = todayROC();
-const MONTH_KEY = "monthly_total_" + STATE.ym;
+// === State (mutable date) ===
+let STATE = rocFromDate(new Date());
+let MONTH_KEY = "monthly_total_" + STATE.ym;
 function getMonth(){ return parseInt(localStorage.getItem(MONTH_KEY) || "0", 10); }
 function setMonth(v){ localStorage.setItem(MONTH_KEY, String(Math.max(0, parseInt(v,10) || 0))); }
+function updateDate(d){
+  STATE = rocFromDate(d);
+  MONTH_KEY = "monthly_total_" + STATE.ym;
+  document.getElementById('dateText').textContent = STATE.roc;
+  document.getElementById('hdrSub').textContent = STATE.roc;
+  document.getElementById('dateInput').value = STATE.iso;
+  recalc();
+}
 
 // === Boot ===
 let profile = { displayName: "(未取得)", userId: null };
@@ -140,7 +164,8 @@ let employees = null;
 let dayTotal = 0;
 
 async function boot(){
-  document.getElementById('dateDisp').textContent = STATE.roc;
+  document.getElementById('dateText').textContent = STATE.roc;
+  document.getElementById('dateInput').value = STATE.iso;
   document.getElementById('hdrSub').textContent = STATE.roc;
   await Promise.all([initLiff(), loadEmployees()]);
   renderMeals();
@@ -229,15 +254,50 @@ function buildPersonTile(name, group, isOther){
   fields.innerHTML = `
     <div class="grid">
       ${otherInput}
-      <div class="field"><label>上班</label>${timeSlider('start')}</div>
-      <div class="field"><label>下班</label>${timeSlider('end')}</div>
-      <div class="field"><label>休息（小時）</label>${halfHourSlider('rest')}</div>
-      <div class="field"><label>加班（小時）</label>${halfHourSlider('ot')}</div>
+      <div class="field"><label>上班</label>${timeWheelInput('start')}</div>
+      <div class="field"><label>下班</label>${timeWheelInput('end')}</div>
+      <div class="field"><label>休息（小時）</label>${halfHourStepper('rest')}</div>
+    </div>
+    <div class="ot-wrap">
+      <button type="button" class="ot-toggle">＋ 加班</button>
+      <div class="ot-field" style="display:none">
+        <label>加班（小時）</label>${halfHourStepper('ot')}
+      </div>
     </div>
   `;
+  // Wire up OT toggle
+  setTimeout(()=>{
+    const otBtn = fields.querySelector('.ot-toggle');
+    const otField = fields.querySelector('.ot-field');
+    if (otBtn && otField){
+      otBtn.addEventListener('click', ()=>{
+        const showing = otField.style.display !== 'none';
+        otField.style.display = showing ? 'none' : 'block';
+        otBtn.textContent = showing ? '＋ 加班' : '− 隱藏加班';
+        if (showing){
+          // reset to 0 when hiding
+          const otIn = otField.querySelector('input[data-k="ot"]');
+          if (otIn) otIn.value = 0;
+        }
+      });
+    }
+    // Wire stepper +/- buttons
+    fields.querySelectorAll('.hh-stepper').forEach(stepper=>{
+      const input = stepper.querySelector('input[type=number]');
+      stepper.querySelectorAll('button').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          let v = parseFloat(input.value) || 0;
+          v += (btn.dataset.act === 'plus') ? 0.5 : -0.5;
+          v = Math.max(0, Math.min(6, v));
+          input.value = v;
+        });
+      });
+    });
+  }, 0);
   tile.addEventListener('click', e=>{
-    if (e.target.closest('.person-fields') || e.target.tagName === 'INPUT') return;
+    if (e.target.closest('.person-fields') || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
     tile.classList.toggle('on');
+    validate();   // BUG fix: validate after person toggle
   });
 
   // group tile + fields together
@@ -247,27 +307,31 @@ function buildPersonTile(name, group, isOther){
   return wrapper;
 }
 
-function timeSlider(k){
-  // 24-hr in 0.5 step, default depends on key
-  const def = k === 'start' ? "9" : "20";
-  return `
-    <div class="slider-row">
-      <input type="range" min="0" max="24" step="0.5" value="${def}" data-k="${k}" oninput="this.nextElementSibling.textContent=fmtT(this.value)">
-      <span class="time-display">${fmtT(def)}</span>
-    </div>`;
+function timeWheelInput(k){
+  // Use native time input → renders as wheel picker on iOS/Android
+  const def = k === 'start' ? "09:00" : "20:00";
+  return `<input type="time" step="1800" value="${def}" data-k="${k}" class="time-wheel">`;
 }
-function halfHourSlider(k){
-  return `
-    <div class="slider-row">
-      <input type="range" min="0" max="6" step="0.5" value="0" data-k="${k}" oninput="this.nextElementSibling.textContent=this.value+' hr'">
-      <span class="time-display">0 hr</span>
-    </div>`;
+function halfHourStepper(k){
+  return `<div class="hh-stepper">
+    <button type="button" data-act="minus" data-k="${k}">−</button>
+    <input type="number" min="0" max="6" step="0.5" value="0" data-k="${k}">
+    <span class="hh-unit">h</span>
+    <button type="button" data-act="plus" data-k="${k}">＋</button>
+  </div>`;
 }
 function fmtT(v){
+  // accept either "HH:MM" or numeric hours
+  if (typeof v === 'string' && v.includes(':')) return v;
   const f = parseFloat(v);
   const h = Math.floor(f);
   const m = (f - h) === 0.5 ? "30" : "00";
   return String(h).padStart(2,'0') + ":" + m;
+}
+function timeToFloat(t){
+  if (typeof t === 'number') return t;
+  const [h, m] = (t || '00:00').split(':').map(Number);
+  return h + (m || 0)/60;
 }
 window.fmtT = fmtT;
 
@@ -313,6 +377,17 @@ function validate(){
 // === Handlers ===
 function attachHandlers(){
   document.getElementById('guestCount').addEventListener('input', recalc);
+  document.getElementById('editDateBtn').addEventListener('click', ()=>{
+    const inp = document.getElementById('dateInput');
+    inp.style.display = 'inline-block';
+    inp.focus();
+    if (inp.showPicker) try { inp.showPicker(); } catch(e){}
+  });
+  document.getElementById('dateInput').addEventListener('change', e=>{
+    const v = e.target.value;
+    if (v) updateDate(new Date(v + 'T00:00:00'));
+    e.target.style.display = 'none';
+  });
   document.getElementById('fixMonth').addEventListener('click', ()=>{
     const cur = getMonth();
     const v = prompt("請輸入本月累積營業額（不含今日）：", String(cur));
@@ -346,11 +421,17 @@ function collect(){
       const inp = fields.querySelector('input[data-k="name"]');
       if (inp && inp.value.trim()) name = inp.value.trim();
     }
-    const get = k => parseFloat(fields.querySelector(`input[data-k="${k}"]`).value);
-    const start = get('start'), end = get('end');
-    const rest = get('rest'), ot = get('ot');
+    const startStr = fields.querySelector('input[data-k="start"]').value;
+    const endStr = fields.querySelector('input[data-k="end"]').value;
+    const start = timeToFloat(startStr);
+    const end = timeToFloat(endStr);
+    const restEl = fields.querySelector('input[data-k="rest"]');
+    const otEl = fields.querySelector('input[data-k="ot"]');
+    const rest = restEl ? parseFloat(restEl.value) || 0 : 0;
+    const ot = (otEl && fields.querySelector('.ot-field') && fields.querySelector('.ot-field').style.display !== 'none')
+      ? (parseFloat(otEl.value) || 0) : 0;
     const worked = (end > start ? end - start : end + 24 - start) - rest;
-    persons.push({ name, group: tile.dataset.group, start, end, rest, ot, worked: Math.max(0, worked) });
+    persons.push({ name, group: tile.dataset.group, start: startStr, end: endStr, rest, ot, worked: Math.max(0, worked) });
   });
   const dayAmt = meals.reduce((s,m)=>s+m.amount, 0);
   const atv = guests > 0 ? Math.round(dayAmt / guests) : 0;
@@ -361,60 +442,40 @@ function collect(){
   };
 }
 
-function buildFlex(d){
-  const mealRows = d.meals.map(m => ({
-    type:'box', layout:'horizontal',
-    contents:[
-      { type:'text', text:`${m.label}`, size:'sm', flex:2 },
-      { type:'text', text:`${m.count} 份`, size:'sm', flex:2, align:'end', color:'#6e6e73' },
-      { type:'text', text:`$${m.amount.toLocaleString('zh-TW')}`, size:'sm', flex:3, align:'end', weight:'bold' }
-    ]
-  }));
-  const personRows = d.persons
-    .filter(p => p.name && p.name.trim())
-    .map(p => ({
-      type:'box', layout:'vertical', margin:'sm',
-      contents:[
-        { type:'box', layout:'horizontal', contents:[
-          { type:'text', text: String(p.name), size:'sm', flex:3, weight:'bold' },
-          { type:'text', text: '[' + String(p.group||'') + ']', size:'xs', flex:2, align:'end', color:'#8a8a8e' }
-        ]},
-        { type:'text', text: fmtT(p.start) + '-' + fmtT(p.end) + '（休' + p.rest + ' / 加' + p.ot + '） 工時 ' + p.worked.toFixed(1) + 'h', size:'xs', color:'#6e6e73', wrap:true }
-      ]
-    }));
-  return {
-    type:'bubble', size:'mega',
-    header:{ type:'box', layout:'vertical', backgroundColor:'#06c755', paddingAll:'14px', contents:[
-      { type:'text', text:`業績回報 - 中科15B`, color:'#ffffff', weight:'bold', size:'lg' },
-      { type:'text', text: d.date, color:'#dffaeb', size:'sm' },
-      { type:'text', text:`填寫人：${d.reporter}`, color:'#dffaeb', size:'xs' }
-    ]},
-    body:{ type:'box', layout:'vertical', spacing:'sm', contents:[
-      { type:'box', layout:'horizontal', contents:[
-        { type:'text', text:'本日來客數', size:'sm', color:'#6e6e73', flex:3 },
-        { type:'text', text:`${d.guests} 人`, size:'sm', flex:2, align:'end', weight:'bold' }
-      ]},
-      { type:'box', layout:'horizontal', contents:[
-        { type:'text', text:'客單價', size:'sm', color:'#6e6e73', flex:3 },
-        { type:'text', text:`$${d.atv}`, size:'sm', flex:2, align:'end', weight:'bold' }
-      ]},
-      { type:'separator', margin:'sm' },
-      { type:'text', text:'🍱 各餐別', size:'sm', weight:'bold', margin:'sm' },
-      ...mealRows,
-      { type:'separator', margin:'sm' },
-      { type:'box', layout:'horizontal', contents:[
-        { type:'text', text:'全日營業額', size:'md', weight:'bold', flex:3 },
-        { type:'text', text:`$${d.dayAmt.toLocaleString('zh-TW')}`, size:'md', flex:2, align:'end', weight:'bold', color:'#06c755' }
-      ]},
-      { type:'box', layout:'horizontal', contents:[
-        { type:'text', text:'本月累積', size:'sm', color:'#6e6e73', flex:3 },
-        { type:'text', text:`$${d.monthTotal.toLocaleString('zh-TW')}`, size:'sm', flex:2, align:'end', weight:'bold' }
-      ]},
-      { type:'separator', margin:'sm' },
-      { type:'text', text:'⏱ 當日上班人員', size:'sm', weight:'bold', margin:'sm' },
-      ...personRows
-    ]}
-  };
+function buildText(d){
+  const lines = [];
+  lines.push('日期：' + d.date);
+  lines.push('場域：' + d.site);
+  lines.push('填寫人：' + d.reporter);
+  lines.push('');
+  lines.push('本日來客數：' + d.guests);
+  lines.push('客單價(當日業績/來客數)：' + d.atv);
+  d.meals.forEach(m => {
+    lines.push('');
+    lines.push('【' + m.label + '】');
+    lines.push('餐數：' + m.count);
+    lines.push('營業額：' + m.amount);
+  });
+  lines.push('');
+  lines.push('全日營業額：' + d.dayAmt);
+  lines.push('');
+  lines.push('當月營業額加總：' + d.monthTotal);
+  lines.push('---');
+  lines.push('當日上班人員');
+  // group persons by group label
+  const byGroup = {};
+  d.persons.filter(p => p.name && p.name.trim()).forEach(p=>{
+    (byGroup[p.group] = byGroup[p.group] || []).push(p);
+  });
+  Object.keys(byGroup).forEach(g => {
+    lines.push('');
+    lines.push(g + '：');
+    byGroup[g].forEach(p => {
+      const otStr = p.ot > 0 ? '，加' + p.ot : '';
+      lines.push(p.name + '：' + p.start + '-' + p.end + '（休' + p.rest + otStr + '）');
+    });
+  });
+  return lines.join('\n');
 }
 
 async function submit(){
@@ -422,12 +483,12 @@ async function submit(){
   errBox.textContent = "";
   try{
     const d = collect();
-    const flex = buildFlex(d);
+    const text = buildText(d);
     if (!liff || !liff.sendMessages){
       errBox.textContent = "LIFF SDK 未載入，無法送出";
       return;
     }
-    const payload = [{ type:'flex', altText: ('業績回報 - ' + d.date).slice(0, 400), contents: flex }];
+    const payload = [{ type:'text', text }];
     try{
       await liff.sendMessages(payload);
     } catch(sendErr){
