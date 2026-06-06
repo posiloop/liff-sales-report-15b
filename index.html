@@ -989,12 +989,20 @@ function buildText(d){
   d.persons.filter(p => p.name && p.name.trim()).forEach(p=>{
     (byGroup[p.group] = byGroup[p.group] || []).push(p);
   });
-  Object.keys(byGroup).forEach(g => {
+  // 正職 always before 兼職
+  const groupOrder = ['正職', '兼職'];
+  const sortedGroups = Object.keys(byGroup).sort((a, b) => {
+    const ai = groupOrder.indexOf(a);
+    const bi = groupOrder.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  sortedGroups.forEach(g => {
     lines.push(g + '：');
     byGroup[g].forEach(p => {
       const totalH = (p.worked + (p.ot || 0));
       const otPart = p.ot > 0 ? ('加班:' + fmtHr(p.ot) + 'h/') : '';
-      lines.push(p.name + '：' + p.start + '-' + p.end + '（休息:' + fmtHr(p.rest) + 'h/' + otPart + '工時:' + fmtHr(totalH) + 'h）');
+      lines.push(p.name + '：' + p.start + '-' + p.end);
+      lines.push('（休息:' + fmtHr(p.rest) + 'h/' + otPart + '工時:' + fmtHr(totalH) + 'h）');
     });
   });
   lines.push('今日總工時：' + fmtHr(d.dayHours) + 'h');
