@@ -580,8 +580,8 @@ function buildPersonTile(name, group, isOther, schedule){
     </div>
     <div class="ot-wrap">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button type="button" class="ot-toggle">＋ 加班</button>
-        <button type="button" class="ot-toggle note-toggle">＋ 備註</button>
+        <button type="button" class="ot-toggle">加班</button>
+        <button type="button" class="ot-toggle note-toggle">備註</button>
       </div>
       <div class="ot-field" style="display:none">
         <label>加班（小時）</label>${halfHourStepper('ot')}
@@ -601,7 +601,7 @@ function buildPersonTile(name, group, isOther, schedule){
       noteBtn.addEventListener('click', ()=>{
         const showing = noteField.style.display !== 'none';
         noteField.style.display = showing ? 'none' : 'block';
-        noteBtn.textContent = showing ? '＋ 備註' : '− 收起備註';
+        noteBtn.textContent = showing ? '備註' : '取消備註';
         if (showing){ const ni = noteField.querySelector('[data-k="note"]'); if (ni) ni.value = ''; }
         else { const ni = noteField.querySelector('[data-k="note"]'); if (ni) ni.focus(); }
       });
@@ -615,7 +615,7 @@ function buildPersonTile(name, group, isOther, schedule){
       otBtn.addEventListener('click', ()=>{
         const showing = otField.style.display !== 'none';
         otField.style.display = showing ? 'none' : 'block';
-        otBtn.textContent = showing ? '＋ 加班' : '− 隱藏加班';
+        otBtn.textContent = showing ? '加班' : '取消加班';
         if (showing){
           // reset to 0 when hiding
           const otIn = otField.querySelector('input[data-k="ot"]');
