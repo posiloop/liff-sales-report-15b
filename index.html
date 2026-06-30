@@ -221,6 +221,15 @@
 
 </div><!-- /container -->
 
+<!-- 備註 (報表層級, 建全 2026-06-30) -->
+<div class="note-wrap" style="margin:4px 12px 10px">
+  <button type="button" id="noteToggle" class="ot-toggle">＋ 備註</button>
+  <div id="noteField" style="display:none;margin-top:6px">
+    <textarea id="noteInput" rows="2" maxlength="500" placeholder="輸入今日備註(選填)…"
+      style="width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;resize:vertical"></textarea>
+  </div>
+</div>
+
 <div id="errBox" class="err" style="margin:0 12px"></div>
 
 <div class="submit-bar">
@@ -368,6 +377,38 @@ function showSuccessScreen(){
   document.body.appendChild(overlay);
   overlay.querySelector('#closeSuccessBtn').addEventListener('click', ()=>{
     try{ liff.closeWindow(); } catch(e){}
+  });
+}
+
+function showDupDateWarning(dateStr){
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;
+    display:flex;align-items:center;justify-content:center;padding:24px
+  `;
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:18px;padding:28px 24px;text-align:center;max-width:340px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,.3)">
+      <div style="font-size:56px;line-height:1;margin-bottom:14px">⚠️</div>
+      <div style="font-size:18px;font-weight:700;color:var(--warn);margin-bottom:6px">同一天已有回報</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.6">
+        ${dateStr || ''} 已經有一筆你的回報資料。<br>
+        請先刪除相同日期資料(點下方「刪除前一筆」)，再重新送出。
+      </div>
+      <button type="button" id="dupRecordsBtn"
+        style="width:100%;padding:13px;background:#fff;color:var(--warn);border:1px solid var(--warn);border-radius:12px;font-size:15px;font-weight:700;font:inherit;cursor:pointer;margin-bottom:8px">
+        前往刪除相同日期資料
+      </button>
+      <button type="button" id="dupOkBtn"
+        style="width:100%;padding:13px;background:linear-gradient(135deg,var(--brand),var(--brand-dim));color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;font:inherit;cursor:pointer">
+        我知道了
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#dupOkBtn').addEventListener('click', ()=> overlay.remove());
+  overlay.querySelector('#dupRecordsBtn').addEventListener('click', ()=>{
+    overlay.remove();
+    try{ openRecords(); }catch(e){}
   });
 }
 
@@ -960,9 +1001,10 @@ function collect(){
   // total hours = sum of worked + ot
   const dayHours = persons.reduce((s,p)=> s + p.worked + (p.ot || 0), 0);
   const monthHours = getMonthHours();   // 不含當日
+  const note = (document.getElementById('noteInput')?.value || '').trim();
   return {
     date: STATE.roc, site:"中科台積電15B", reporter: profile.displayName,
-    guests, atv, meals, persons, dayAmt, monthTotal, dayHours, monthHours
+    guests, atv, meals, persons, dayAmt, monthTotal, dayHours, monthHours, note
   };
 }
 
@@ -1012,6 +1054,10 @@ function buildText(d){
   lines.push('');
   lines.push('今日總工時：' + fmtHr(d.dayHours) + 'h');
   lines.push('當月總工時加總：' + fmtHr(d.monthHours + d.dayHours) + 'h');
+  if (d.note){
+    lines.push('---');
+    lines.push('備註：' + d.note);
+  }
   // 不再插 ZWSP (建全選 2: 接受 LINE auto-linkify, 換來 LINE 搜尋功能可用)
   return lines.join('\n');
 }
@@ -1021,6 +1067,17 @@ async function submit(){
   errBox.textContent = "";
   try{
     const d = collect();
+    // 0) 同日重複檢查 (建全 2026-06-30)：送出前查當月是否已有同一天的回報
+    if (WEBHOOK_URL){
+      try{
+        const lr = await fetch(`${WEBHOOK_URL}?action=list&ym=${encodeURIComponent(STATE.ym)}&userId=${encodeURIComponent(profile.userId||'')}`);
+        const lj = await lr.json();
+        if (lj && lj.ok && Array.isArray(lj.items) && lj.items.some(it => it.date === d.date)){
+          showDupDateWarning(d.date);
+          return;
+        }
+      } catch(e){ console.warn('同日檢查失敗，不擋送出', e); }
+    }
     // 1) Post to Apps Script backend (record + get new month total)
     if (WEBHOOK_URL){
       try{
@@ -1032,7 +1089,8 @@ async function submit(){
             date: d.date, ym: STATE.ym, site: d.site,
             reporter: d.reporter, userId: profile.userId || '',
             dayAmt: d.dayAmt, dayHours: d.dayHours,
-            meals: d.meals, persons: d.persons   // 完整明細存進 sheet (v30 — D 方案)
+            meals: d.meals, persons: d.persons,   // 完整明細存進 sheet (v30 — D 方案)
+            note: d.note   // 員工自填備註 (v33 — 需 Apps Script 加 K 欄才會存)
           })
         });
         const j = await r.json();
@@ -1074,6 +1132,20 @@ async function submit(){
     errBox.textContent = "送出失敗：" + (e.message || e);
   }
 }
+
+// 備註展開/收起 toggle (建全 2026-06-30)
+(function(){
+  const nb = document.getElementById('noteToggle');
+  const nf = document.getElementById('noteField');
+  if (nb && nf){
+    nb.addEventListener('click', ()=>{
+      const showing = nf.style.display !== 'none';
+      nf.style.display = showing ? 'none' : 'block';
+      nb.textContent = showing ? '＋ 備註' : '− 收起備註';
+      if (!showing){ const ni = document.getElementById('noteInput'); if (ni) ni.focus(); }
+    });
+  }
+})();
 
 boot();
 </script>
