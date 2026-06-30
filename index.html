@@ -581,12 +581,12 @@ function buildPersonTile(name, group, isOther, schedule){
     <div class="ot-wrap">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" class="ot-toggle">＋ 加班</button>
-        <button type="button" class="note-toggle">＋ 備註</button>
+        <button type="button" class="ot-toggle note-toggle">＋ 備註</button>
       </div>
       <div class="ot-field" style="display:none">
         <label>加班（小時）</label>${halfHourStepper('ot')}
       </div>
-      <div class="note-field" style="display:none;margin-top:6px">
+      <div class="note-field ot-field" style="display:none">
         <label>備註</label>
         <input type="text" data-k="note" maxlength="200" placeholder="輸入此人備註(選填)…"
           style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--line);border-radius:8px;font:inherit">
