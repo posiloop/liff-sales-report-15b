@@ -221,15 +221,6 @@
 
 </div><!-- /container -->
 
-<!-- 備註 (報表層級, 建全 2026-06-30) -->
-<div class="note-wrap" style="margin:4px 12px 10px">
-  <button type="button" id="noteToggle" class="ot-toggle">＋ 備註</button>
-  <div id="noteField" style="display:none;margin-top:6px">
-    <textarea id="noteInput" rows="2" maxlength="500" placeholder="輸入今日備註(選填)…"
-      style="width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;resize:vertical"></textarea>
-  </div>
-</div>
-
 <div id="errBox" class="err" style="margin:0 12px"></div>
 
 <div class="submit-bar">
@@ -588,12 +579,34 @@ function buildPersonTile(name, group, isOther, schedule){
       <div class="field"><label>休息（小時）</label>${halfHourStepper('rest')}</div>
     </div>
     <div class="ot-wrap">
-      <button type="button" class="ot-toggle">＋ 加班</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="ot-toggle">＋ 加班</button>
+        <button type="button" class="note-toggle">＋ 備註</button>
+      </div>
       <div class="ot-field" style="display:none">
         <label>加班（小時）</label>${halfHourStepper('ot')}
       </div>
+      <div class="note-field" style="display:none;margin-top:6px">
+        <label>備註</label>
+        <input type="text" data-k="note" maxlength="200" placeholder="輸入此人備註(選填)…"
+          style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--line);border-radius:8px;font:inherit">
+      </div>
     </div>
   `;
+  // Wire up 備註 toggle (建全 2026-06-30, per-person)
+  setTimeout(()=>{
+    const noteBtn = fields.querySelector('.note-toggle');
+    const noteField = fields.querySelector('.note-field');
+    if (noteBtn && noteField){
+      noteBtn.addEventListener('click', ()=>{
+        const showing = noteField.style.display !== 'none';
+        noteField.style.display = showing ? 'none' : 'block';
+        noteBtn.textContent = showing ? '＋ 備註' : '− 收起備註';
+        if (showing){ const ni = noteField.querySelector('[data-k="note"]'); if (ni) ni.value = ''; }
+        else { const ni = noteField.querySelector('[data-k="note"]'); if (ni) ni.focus(); }
+      });
+    }
+  });
   // Wire up OT toggle
   setTimeout(()=>{
     const otBtn = fields.querySelector('.ot-toggle');
@@ -992,7 +1005,9 @@ function collect(){
     const ot = (otEl && fields.querySelector('.ot-field') && fields.querySelector('.ot-field').style.display !== 'none')
       ? (parseFloat(otEl.value) || 0) : 0;
     const worked = (end > start ? end - start : end + 24 - start) - rest;
-    persons.push({ name, group: tile.dataset.group, start: startStr, end: endStr, rest, ot, worked: Math.max(0, worked) });
+    const noteEl = fields.querySelector('[data-k="note"]');
+    const note = noteEl ? (noteEl.value || '').trim() : '';
+    persons.push({ name, group: tile.dataset.group, start: startStr, end: endStr, rest, ot, worked: Math.max(0, worked), note });
   });
   const dayAmt = meals.reduce((s,m)=>s+m.amount, 0);
   const guests = meals.reduce((s,m)=>s + (m.count || 0), 0);
@@ -1001,10 +1016,9 @@ function collect(){
   // total hours = sum of worked + ot
   const dayHours = persons.reduce((s,p)=> s + p.worked + (p.ot || 0), 0);
   const monthHours = getMonthHours();   // 不含當日
-  const note = (document.getElementById('noteInput')?.value || '').trim();
   return {
     date: STATE.roc, site:"中科台積電15B", reporter: profile.displayName,
-    guests, atv, meals, persons, dayAmt, monthTotal, dayHours, monthHours, note
+    guests, atv, meals, persons, dayAmt, monthTotal, dayHours, monthHours
   };
 }
 
@@ -1049,15 +1063,12 @@ function buildText(d){
       const otPart = p.ot > 0 ? ('加班:' + fmtHr(p.ot) + 'h/') : '';
       lines.push(p.name + '：' + p.start + '-' + p.end);
       lines.push('(休息:' + fmtHr(p.rest) + 'h/' + otPart + '工時:' + fmtHr(totalH) + 'h)');
+      if (p.note && p.note.trim()) lines.push('備註:' + p.note.trim());
     });
   });
   lines.push('');
   lines.push('今日總工時：' + fmtHr(d.dayHours) + 'h');
   lines.push('當月總工時加總：' + fmtHr(d.monthHours + d.dayHours) + 'h');
-  if (d.note){
-    lines.push('---');
-    lines.push('備註：' + d.note);
-  }
   // 不再插 ZWSP (建全選 2: 接受 LINE auto-linkify, 換來 LINE 搜尋功能可用)
   return lines.join('\n');
 }
@@ -1089,8 +1100,7 @@ async function submit(){
             date: d.date, ym: STATE.ym, site: d.site,
             reporter: d.reporter, userId: profile.userId || '',
             dayAmt: d.dayAmt, dayHours: d.dayHours,
-            meals: d.meals, persons: d.persons,   // 完整明細存進 sheet (v30 — D 方案)
-            note: d.note   // 員工自填備註 (v33 — 需 Apps Script 加 K 欄才會存)
+            meals: d.meals, persons: d.persons   // 完整明細存進 sheet (persons 內含每人 note，v34)
           })
         });
         const j = await r.json();
@@ -1132,20 +1142,6 @@ async function submit(){
     errBox.textContent = "送出失敗：" + (e.message || e);
   }
 }
-
-// 備註展開/收起 toggle (建全 2026-06-30)
-(function(){
-  const nb = document.getElementById('noteToggle');
-  const nf = document.getElementById('noteField');
-  if (nb && nf){
-    nb.addEventListener('click', ()=>{
-      const showing = nf.style.display !== 'none';
-      nf.style.display = showing ? 'none' : 'block';
-      nb.textContent = showing ? '＋ 備註' : '− 收起備註';
-      if (!showing){ const ni = document.getElementById('noteInput'); if (ni) ni.focus(); }
-    });
-  }
-})();
 
 boot();
 </script>
