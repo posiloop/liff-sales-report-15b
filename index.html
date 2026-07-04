@@ -1275,9 +1275,16 @@ async function submit(){
       try{ if (liff && liff.login) liff.login(); }catch(_){}
       return;
     }
-    // v44 fix (建全): 當月累積(營業額/工時)還沒從後端讀完就送出 → 訊息會用 0 加總。讀完前擋住、提示稍候。
-    if (!monthLoaded){
-      errBox.textContent = "⏳ 當月累積資料還在讀取中，請等 1～2 秒讀完再送出（避免當月加總被算成 0）。";
+    // v45 fix (建全): v44 的 monthLoaded flag 在 fetch「失敗」時也被設 true → 仍以 0(localStorage fallback) 加總送出。
+    //   改為：送出前必須已從後端讀到「當月累積」真值(serverMonthCache!=null)；沒讀到就當場補讀一次；補讀仍失敗就擋住不送(絕不送 0)。
+    //   fetchMonth 成功時會同時設 serverHoursCache，故檢查 serverMonthCache 即可代表兩者都到位。
+    if (serverMonthCache == null){
+      errBox.textContent = "⏳ 當月累積資料還在讀取中，請等 1～2 秒讀完再送出！";
+      try{ const mt = await fetchMonth(STATE.ym); if (mt != null) serverMonthCache = mt; }catch(_){}
+      recalc();
+    }
+    if (serverMonthCache == null){
+      errBox.textContent = "⏳ 當月累積資料還在讀取中，請等 1～2 秒讀完再送出！";
       restoreBtn();
       return;
     }
