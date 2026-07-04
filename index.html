@@ -276,6 +276,7 @@ function fmtHr(v){
 let STATE = rocFromDate(new Date());
 let MONTH_KEY = "monthly_total_" + STATE.ym;
 let serverMonthCache = null;  // latest fetched server month total (null = unknown / use local fallback)
+let monthLoaded = false;      // v44 (建全): 當月累積(營業額/工時)是否已從後端讀完；讀完前擋送出，避免以 0 加總
 // 修改前一筆 (edit mode): 選定舊紀錄後存 { id, ym, date, oldAmt, oldHours }，送出時「送新＋刪舊」取代
 let editingRecord = null;
 function getMonth(){
@@ -304,6 +305,7 @@ function updateDate(d){
   MONTH_KEY = "monthly_total_" + STATE.ym;
   serverMonthCache = null;
   serverHoursCache = null;
+  monthLoaded = false;   // v44: 換日期→重新讀當月累積，讀完前擋送出
   document.getElementById('dateText').textContent = STATE.roc;
   document.getElementById('hdrSub').textContent = STATE.roc;
   const di = document.getElementById('dateInput');
@@ -311,7 +313,7 @@ function updateDate(d){
   // Refresh muscle pricing (depends on weekday) — but preserve existing input values
   refreshMuscleHints();
   // Refresh server month
-  fetchMonth(STATE.ym).then(v=>{ if (v != null) serverMonthCache = v; recalc(); });
+  fetchMonth(STATE.ym).then(v=>{ if (v != null) serverMonthCache = v; monthLoaded = true; recalc(); });
   recalc();
 }
 
@@ -471,6 +473,7 @@ async function boot(){
   // Fetch current month total from server (if WEBHOOK_URL configured)
   const v = await fetchMonth(STATE.ym);
   if (v != null) { serverMonthCache = v; }
+  monthLoaded = true;   // v44: 初次載入的當月累積已讀完(成功或失敗都放行)，之後才允許送出
   // Use recalc to update BOTH monthSum and monthHoursSum (bug fix v15)
   recalc();
 }
@@ -1270,6 +1273,12 @@ async function submit(){
       errBox.textContent = "LINE 登入狀態已失效，正在重新登入…完成後請再按一次送出。";
       restoreBtn();
       try{ if (liff && liff.login) liff.login(); }catch(_){}
+      return;
+    }
+    // v44 fix (建全): 當月累積(營業額/工時)還沒從後端讀完就送出 → 訊息會用 0 加總。讀完前擋住、提示稍候。
+    if (!monthLoaded){
+      errBox.textContent = "⏳ 當月累積資料還在讀取中，請等 1～2 秒讀完再送出（避免當月加總被算成 0）。";
+      restoreBtn();
       return;
     }
     // v42 fix (建全): 移除送出前的授權 pre-check ——電腦版 permission.query 會誤判成未授權(狀態跟手機不同)，
