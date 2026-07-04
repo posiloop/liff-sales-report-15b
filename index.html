@@ -101,7 +101,7 @@
   .tp-cancel{color:var(--muted);border-right:1px solid var(--line)}
   .tp-ok{color:var(--accent);font-weight:600}
   /* Person remove */
-  .person-remove{background:transparent;border:1px solid var(--line);border-radius:50%;width:24px;height:24px;font-size:11px;color:var(--warn);cursor:pointer;padding:0;line-height:1}
+  .person-remove{background:#fff;border:1px solid var(--warn);border-radius:14px;height:26px;padding:0 10px;font-size:12px;font-weight:700;color:var(--warn);cursor:pointer;line-height:1;white-space:nowrap}
   .hh-stepper{display:flex;align-items:center;gap:6px;justify-content:flex-end}
   .hh-stepper input[type=number]{width:60px;padding:6px;text-align:center;font:inherit;border:1px solid var(--line);border-radius:6px}
   .hh-stepper button{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:18px;font:inherit;cursor:pointer}
@@ -613,8 +613,10 @@ function buildPersonTile(name, group, isOther, schedule){
   tile.dataset.name = name;
   tile.dataset.group = group;
   if (isOther) tile.dataset.other = '1';
-  const removeBtn = isOther ? `<button type="button" class="person-remove" title="刪除">✕</button>` : '';
-  tile.innerHTML = `<div class="name">${name}</div><div style="display:flex;align-items:center;gap:6px">${removeBtn}<div class="plus">+</div></div>`;
+  // 其他人員：只留紅色 ✕（移除），不再放會旋轉成 × 的 .plus 指示器，避免出現兩個 X 造成誤點疊加（建全 2026-07-04）
+  const removeBtn = isOther ? `<button type="button" class="person-remove" title="移除">✕ 取消</button>` : '';
+  const plusEl = isOther ? '' : `<div class="plus">+</div>`;
+  tile.innerHTML = `<div class="name">${name}</div><div style="display:flex;align-items:center;gap:6px">${removeBtn}${plusEl}</div>`;
 
   const fields = document.createElement('div');
   fields.className = 'person-fields';
