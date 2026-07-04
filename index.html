@@ -1213,13 +1213,18 @@ function buildText(d){
 
 async function submit(){
   const errBox = document.getElementById('errBox');
+  const btnS = document.getElementById('btnSubmit');
+  const restoreBtn = ()=>{ if(btnS){ btnS.disabled = false; } try{ validate(); }catch(_){} };
   errBox.textContent = "";
+  // v39 (建全): 送出期間鎖住按鈕+反灰讀秒，避免處理延遲那幾秒被重複點擊造成重複回報
+  if (btnS){ btnS.disabled = true; btnS.textContent = "⏳ 送出中…請勿重複點擊"; }
   try{
     const d = collect();
     // v38 fix: 送出前確認 LIFF access token 有效，缺失/過期就先重新登入，避免 sendMessages 報
     //   「UNAUTHORIZED Need access_token, Please login first」。放在任何 webhook 寫入之前 → 重新登入不會造成 Sheet 重複列。
     if (!liff || !liff.isLoggedIn || !liff.isLoggedIn() || !liff.getAccessToken || !liff.getAccessToken()){
       errBox.textContent = "LINE 登入狀態已失效，正在重新登入…完成後請再按一次送出。";
+      restoreBtn();
       try{ if (liff && liff.login) liff.login(); }catch(_){}
       return;
     }
@@ -1229,9 +1234,19 @@ async function submit(){
         const lr = await fetch(`${WEBHOOK_URL}?action=list&ym=${encodeURIComponent(STATE.ym)}&userId=${encodeURIComponent(profile.userId||'')}`);
         const lj = await lr.json();
         // 修改模式：被修改的那筆自己不算重複
-        if (lj && lj.ok && Array.isArray(lj.items) &&
-            lj.items.some(it => it.date === d.date && !(editingRecord && String(it.id) === String(editingRecord.id)))){
-          showDupDateWarning(d.date);
+        const dupItem = (lj && lj.ok && Array.isArray(lj.items))
+          ? lj.items.find(it => it.date === d.date && !(editingRecord && String(it.id) === String(editingRecord.id)))
+          : null;
+        if (dupItem){
+          // v39 (建全): 同日已有回報 → 自動跳「修改前一筆」(帶入該筆進編輯模式)，送出即「取代」不會重複
+          restoreBtn();
+          try{
+            startEditRecord(dupItem);
+            alert('📝 ' + d.date + ' 當天已有一筆回報，已自動帶入「修改前一筆」。\n請確認/調整內容後，按「送出修改（取代原回報）」即可取代，不會產生重複資料。');
+          } catch(e){
+            console.warn('auto-edit failed, fallback warning', e);
+            showDupDateWarning(d.date);
+          }
           return;
         }
       } catch(e){ console.warn('同日檢查失敗，不擋送出', e); }
@@ -1282,6 +1297,7 @@ async function submit(){
     const text = buildText(d);
     if (!liff || !liff.sendMessages){
       errBox.textContent = "LIFF SDK 未載入，無法送出";
+      restoreBtn();
       return;
     }
     const payload = [{ type:'text', text }];
@@ -1296,6 +1312,7 @@ async function submit(){
         '<br><details style="margin-top:6px"><summary style="cursor:pointer">查看 Flex JSON</summary>' +
         '<textarea readonly style="width:100%;height:160px;font-size:10px;font-family:monospace">' +
         payloadStr.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</textarea></details>';
+      restoreBtn();
       return;
     }
     // local fallback bump (in case webhook absent)
@@ -1310,6 +1327,7 @@ async function submit(){
   } catch(e){
     console.error('submit error', e);
     errBox.textContent = "送出失敗：" + (e.message || e);
+    restoreBtn();
   }
 }
 
