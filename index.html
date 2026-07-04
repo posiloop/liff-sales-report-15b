@@ -167,9 +167,14 @@
       <div class="val" id="monthHoursSum" style="font-size:18px">-- h</div>
     </div>
     <div style="display:flex;gap:6px;flex-direction:column">
-      <button id="manageRecords">刪除前一筆</button>
-      <button id="fixMonth">修改總營業額</button>
-      <button id="fixMonthHours">修改總工時</button>
+      <div style="display:flex;gap:6px">
+        <button id="manageRecords" style="flex:1;padding:6px 8px">刪除前一筆</button>
+        <button id="editRecord" style="flex:1;padding:6px 8px">修改前一筆</button>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button id="fixMonth" style="flex:1;padding:6px 8px">修改總營業額</button>
+        <button id="fixMonthHours" style="flex:1;padding:6px 8px">修改總工時</button>
+      </div>
     </div>
   </div>
 </div>
@@ -193,7 +198,7 @@
 <!-- Records management modal -->
 <div id="recordsModal" class="tp-modal" style="display:none">
   <div class="tp-sheet" style="max-width:380px">
-    <div class="tp-title">我這個月的回報</div>
+    <div class="tp-title" id="recordsTitle">我這個月的回報</div>
     <div id="recordsList" style="max-height:340px;overflow-y:auto;padding:10px"></div>
     <div class="tp-actions">
       <button type="button" class="tp-cancel" onclick="closeRecords()">關閉</button>
@@ -271,9 +276,14 @@ function fmtHr(v){
 let STATE = rocFromDate(new Date());
 let MONTH_KEY = "monthly_total_" + STATE.ym;
 let serverMonthCache = null;  // latest fetched server month total (null = unknown / use local fallback)
+// 修改前一筆 (edit mode): 選定舊紀錄後存 { id, ym, date, oldAmt, oldHours }，送出時「送新＋刪舊」取代
+let editingRecord = null;
 function getMonth(){
-  if (serverMonthCache != null) return serverMonthCache;
-  return parseInt(localStorage.getItem(MONTH_KEY) || "0", 10);
+  let base = (serverMonthCache != null) ? serverMonthCache
+    : parseInt(localStorage.getItem(MONTH_KEY) || "0", 10);
+  // 修改模式：伺服器月累積仍含被修改那筆 → 先扣掉舊值，UI 與訊息文字才不會重複計
+  if (editingRecord) base = Math.max(0, base - (editingRecord.oldAmt || 0));
+  return base;
 }
 function setMonth(v){ localStorage.setItem(MONTH_KEY, String(Math.max(0, parseInt(v,10) || 0))); }
 async function fetchMonth(ym){
@@ -337,8 +347,11 @@ function seedMonth(){
 // === Monthly hours ===
 let serverHoursCache = null;
 function getMonthHours(){
-  if (serverHoursCache != null) return serverHoursCache;
-  return parseFloat(localStorage.getItem("monthly_hours_" + STATE.ym) || "0");
+  let base = (serverHoursCache != null) ? serverHoursCache
+    : parseFloat(localStorage.getItem("monthly_hours_" + STATE.ym) || "0");
+  // 修改模式：同 getMonth，先扣掉舊紀錄工時
+  if (editingRecord) base = Math.max(0, base - (editingRecord.oldHours || 0));
+  return base;
 }
 function setMonthHours(v){
   localStorage.setItem("monthly_hours_" + STATE.ym, String(Math.max(0, parseFloat(v) || 0)));
@@ -845,7 +858,7 @@ function validate(){
   const anyPerson = document.querySelectorAll('.person-tile.on').length > 0;
   if (anyMeal && anyPerson){
     btn.disabled = false;
-    btn.textContent = "送出回報";
+    btn.textContent = editingRecord ? "送出修改（取代原回報）" : "送出回報";
   } else {
     btn.disabled = true;
     btn.textContent = "請先選餐別 + 員工";
@@ -879,36 +892,45 @@ function attachHandlers(){
     if (v !== null) { setMonthHours(v); serverHoursCache = null; recalc(); }
   });
   document.getElementById('addOther').addEventListener('click', ()=>{
-    const host = document.getElementById('personList');
     // Default to 兼職; user can switch via inline toggle
-    const w = buildPersonTile('其他人員', '兼職', true, getDefaultSchedule());
-    host.appendChild(w);
-    const tile = w.querySelector('.person-tile');
-    const rmBtn = tile && tile.querySelector('.person-remove');
-    if (rmBtn) rmBtn.addEventListener('click', ev=>{
-      ev.stopPropagation();
-      w.remove();
-      validate();
-    });
-    // Wire 正職/兼職 inline toggle
-    const fields = w.querySelector('.person-fields');
-    fields.querySelectorAll('.grp-toggle button').forEach(b=>{
-      b.addEventListener('click', ()=>{
-        fields.querySelectorAll('.grp-toggle button').forEach(x => x.classList.remove('on'));
-        b.classList.add('on');
-        tile.dataset.group = b.dataset.grp;
-      });
-    });
-    tile.classList.add('on');
+    const w = addOtherPerson('其他人員', '兼職', getDefaultSchedule());
+    w.querySelector('.person-tile').classList.add('on');
     validate();
   });
   document.getElementById('btnSubmit').addEventListener('click', submit);
-  document.getElementById('manageRecords').addEventListener('click', openRecords);
+  document.getElementById('manageRecords').addEventListener('click', ()=> openRecords('delete'));
+  document.getElementById('editRecord').addEventListener('click', ()=> openRecords('edit'));
 }
 
-async function openRecords(){
+// 建立「其他人員」tile（addOther 按鈕與修改前一筆帶回未登錄人員共用）
+function addOtherPerson(name, group, schedule){
+  const host = document.getElementById('personList');
+  const w = buildPersonTile(name, group, true, schedule);
+  host.appendChild(w);
+  const tile = w.querySelector('.person-tile');
+  const rmBtn = tile && tile.querySelector('.person-remove');
+  if (rmBtn) rmBtn.addEventListener('click', ev=>{
+    ev.stopPropagation();
+    w.remove();
+    validate();
+  });
+  // Wire 正職/兼職 inline toggle
+  const fields = w.querySelector('.person-fields');
+  fields.querySelectorAll('.grp-toggle button').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      fields.querySelectorAll('.grp-toggle button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      tile.dataset.group = b.dataset.grp;
+    });
+  });
+  return w;
+}
+
+async function openRecords(mode){
+  const isEdit = (mode === 'edit');
   const modal = document.getElementById('recordsModal');
   const list = document.getElementById('recordsList');
+  document.getElementById('recordsTitle').textContent = isEdit ? '選擇要修改的一筆' : '我這個月的回報';
   modal.style.display = 'flex';
   list.innerHTML = '<div class="small" style="text-align:center;padding:20px">載入中…</div>';
   if (!WEBHOOK_URL){
@@ -931,13 +953,22 @@ async function openRecords(){
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px';
       const hours = fmtHr(item.dayHours);
+      const actionBtn = isEdit
+        ? `<button class="rec-edit" style="background:transparent;border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer">修改</button>`
+        : `<button class="rec-del" data-id="${item.id}" style="background:transparent;border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer">刪除</button>`;
       row.innerHTML = `
         <div>
           <div style="font-weight:600">${item.date}</div>
           <div class="small">${fmtNT(item.dayAmt)} / ${hours}h</div>
         </div>
-        <button class="rec-del" data-id="${item.id}" style="background:transparent;border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer">刪除</button>
+        ${actionBtn}
       `;
+      if (isEdit){
+        row.querySelector('.rec-edit').addEventListener('click', ()=>{
+          closeRecords();
+          startEditRecord(item);
+        });
+      }
       list.appendChild(row);
     });
     list.querySelectorAll('.rec-del').forEach(btn=>{
@@ -970,6 +1001,113 @@ async function openRecords(){
 }
 function closeRecords(){ document.getElementById('recordsModal').style.display = 'none'; }
 window.closeRecords = closeRecords;
+
+// === 修改前一筆 (edit mode) ===
+function showEditBanner(dateStr){
+  removeEditBanner();
+  const b = document.createElement('div');
+  b.id = 'editBanner';
+  b.style.cssText = 'margin:0 12px 12px;padding:10px 12px;background:#fff8e6;border:1px solid #e0b400;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px';
+  b.innerHTML = `
+    <div>✏️ <strong>修改模式</strong>：正在修改 <strong>${dateStr}</strong> 的回報，送出後舊資料會自動被取代</div>
+    <button type="button" id="cancelEditBtn"
+      style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap">取消</button>
+  `;
+  const container = document.querySelector('.container');
+  container.parentNode.insertBefore(b, container);
+  b.querySelector('#cancelEditBtn').addEventListener('click', cancelEdit);
+}
+function removeEditBanner(){
+  const b = document.getElementById('editBanner');
+  if (b) b.remove();
+}
+function cancelEdit(){
+  editingRecord = null;
+  removeEditBanner();
+  recalc();
+  validate();
+}
+
+// 選定舊紀錄 → 回到主畫面、帶回當時所有數據讓使用者重新修改
+function startEditRecord(item){
+  editingRecord = {
+    id: item.id, ym: STATE.ym, date: item.date,
+    oldAmt: Number(item.dayAmt) || 0, oldHours: Number(item.dayHours) || 0
+  };
+  // 先重置表單（清掉畫面上原本填到一半的東西，也移除多出的其他人員）
+  renderMeals();
+  renderPersons();
+  // 日期帶回該筆的 ROC 日期（例 115.06.06 (六)）
+  const dm = /^(\d+)\.(\d+)\.(\d+)/.exec(String(item.date || ''));
+  if (dm) updateDate(new Date(Number(dm[1]) + 1911, Number(dm[2]) - 1, Number(dm[3])));
+  // 帶回各餐別
+  (item.meals || []).forEach(me => {
+    const tile = document.querySelector(`.meal-tile[data-key="${me.key}"]`);
+    if (!tile) return;
+    tile.classList.add('on');
+    if (me.type === 'muscle' || me.key === 'muscle'){
+      const sI = document.querySelector(`[data-meal="${me.key}"][data-k="small"]`);
+      const lI = document.querySelector(`[data-meal="${me.key}"][data-k="large"]`);
+      if (sI) sI.value = me.small || 0;
+      if (lI) lI.value = me.large || 0;
+      // count / amount 由 recalc 依當日定價重算
+    } else {
+      const cI = document.querySelector(`[data-meal="${me.key}"][data-k="count"]`);
+      const aI = document.querySelector(`[data-meal="${me.key}"][data-k="amount"]`);
+      if (cI) cI.value = me.count || 0;
+      if (aI){
+        aI.value = me.amount || 0;
+        // 預訂餐若當時手動修正過金額（≠ 餐數×單價），保留手動值不被 recalc 蓋掉
+        if (me.key === 'preorder' && (me.amount || 0) !== (me.count || 0) * PREORDER_PRICE){
+          aI.dataset.manual = '1';
+        }
+      }
+    }
+  });
+  // 帶回上班人員
+  (item.persons || []).forEach(p => {
+    if (!p || !p.name) return;
+    let tile = Array.from(document.querySelectorAll('.person-tile'))
+      .find(t => !t.dataset.other && t.dataset.name === p.name);
+    let wrapper;
+    if (tile){
+      wrapper = tile.parentElement;
+    } else {
+      // 當時是「其他人員」→ 重建一顆 other tile
+      wrapper = addOtherPerson(p.name, p.group || '兼職', { start: p.start, end: p.end });
+      tile = wrapper.querySelector('.person-tile');
+      const nameInp = wrapper.querySelector('input[data-k="name"]');
+      if (nameInp) nameInp.value = p.name;
+    }
+    tile.classList.add('on');
+    const fields = wrapper.querySelector('.person-fields');
+    const sBtn = fields.querySelector('[data-k="start"]');
+    const eBtn = fields.querySelector('[data-k="end"]');
+    if (sBtn && p.start){ sBtn.dataset.val = p.start; sBtn.textContent = p.start; }
+    if (eBtn && p.end){ eBtn.dataset.val = p.end; eBtn.textContent = p.end; }
+    const rI = fields.querySelector('input[data-k="rest"]');
+    if (rI) rI.value = p.rest || 0;
+    // 加班/備註的 toggle handler 是 setTimeout(0) 掛的 → 帶回值也排進 queue，確保在 handler 之後跑
+    setTimeout(()=>{
+      if ((p.ot || 0) > 0){
+        const otBtn = fields.querySelector('.ot-toggle');   // 第一顆 = 加班
+        if (otBtn) otBtn.click();                            // 展開加班欄
+        const otI = fields.querySelector('input[data-k="ot"]');
+        if (otI) otI.value = p.ot;
+      }
+      if (p.note && String(p.note).trim()){
+        const nBtn = fields.querySelector('.note-toggle');
+        if (nBtn) nBtn.click();                              // 展開備註欄
+        const nI = fields.querySelector('[data-k="note"]');
+        if (nI) nI.value = p.note;
+      }
+      recalc();
+    }, 0);
+  });
+  showEditBanner(item.date);
+  recalc();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
 // === Collect + Submit ===
 function collect(){
@@ -1083,7 +1221,9 @@ async function submit(){
       try{
         const lr = await fetch(`${WEBHOOK_URL}?action=list&ym=${encodeURIComponent(STATE.ym)}&userId=${encodeURIComponent(profile.userId||'')}`);
         const lj = await lr.json();
-        if (lj && lj.ok && Array.isArray(lj.items) && lj.items.some(it => it.date === d.date)){
+        // 修改模式：被修改的那筆自己不算重複
+        if (lj && lj.ok && Array.isArray(lj.items) &&
+            lj.items.some(it => it.date === d.date && !(editingRecord && String(it.id) === String(editingRecord.id)))){
           showDupDateWarning(d.date);
           return;
         }
@@ -1109,6 +1249,26 @@ async function submit(){
           serverMonthCache = Number(j.monthTotal) || 0;
           serverHoursCache = Number(j.monthHours) || 0;
           // d.monthTotal / d.monthHours 保留為提交前的值 (不含今日)，per建全
+          // 修改模式：新資料已寫入 → 刪掉舊那筆完成「取代」
+          if (editingRecord){
+            try{
+              const dr = await fetch(WEBHOOK_URL, {
+                method:'POST',
+                headers:{ 'Content-Type':'text/plain' },
+                body: JSON.stringify({ action:'delete', ym: editingRecord.ym, id: editingRecord.id })
+              });
+              const dj = await dr.json();
+              if (dj.ok){
+                serverMonthCache = Number(dj.monthTotal) || 0;
+                serverHoursCache = Number(dj.monthHours) || 0;
+              } else {
+                alert('⚠️ 修改後的回報已送出，但舊資料刪除失敗。請點「刪除前一筆」手動刪除 ' + editingRecord.date + ' 的舊資料，以免月累積重複計算。');
+              }
+            } catch(delErr){
+              console.warn('replace-delete failed', delErr);
+              alert('⚠️ 修改後的回報已送出，但舊資料刪除失敗。請點「刪除前一筆」手動刪除 ' + editingRecord.date + ' 的舊資料，以免月累積重複計算。');
+            }
+          }
         }
       } catch(e){ console.warn('webhook submit failed', e); }
     }
@@ -1132,8 +1292,11 @@ async function submit(){
       return;
     }
     // local fallback bump (in case webhook absent)
+    // 修改模式下 getMonth/getMonthHours 已扣掉舊值 → 這裡寫回的就是「取代後」的正確累積
     if (serverMonthCache == null) setMonth(getMonth() + d.dayAmt);
     if (serverHoursCache == null) setMonthHours(getMonthHours() + d.dayHours);
+    // 結束修改模式（訊息已送出；sheet 寫入依 fire-and-forget 原則不擋）
+    if (editingRecord){ editingRecord = null; removeEditBanner(); }
     // LINE 對話置底其實不能由 LIFF 強制控制（LINE 客戶端保留 scroll 位置）
     // 改成：顯示成功訊息 + 按鈕讓使用者主動返回。新開 chat 才會自動 scroll 到底
     showSuccessScreen();
