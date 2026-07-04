@@ -1228,6 +1228,22 @@ async function submit(){
       try{ if (liff && liff.login) liff.login(); }catch(_){}
       return;
     }
+    // v40 fix (建全): 電腦版/首次使用可能未授權 chat_message.write → sendMessages 報「403 user doesn't grant required permissions」。
+    //   送出前確認授權，未授權就跳「允許」視窗請使用者同意；放在任何 webhook 寫入之前 → 不會造成 Sheet 重複列。
+    try{
+      if (liff.permission && liff.permission.query){
+        const perm = await liff.permission.query('chat_message.write');
+        if (perm && perm.state && perm.state !== 'granted'){
+          restoreBtn();
+          errBox.textContent = "需要「傳送訊息」授權才能送出。請在跳出的視窗按「允許」，完成後再按一次送出。";
+          try{
+            if (liff.permission.requestAll) await liff.permission.requestAll();
+            else if (liff.login) liff.login();
+          }catch(reqErr){ console.warn('requestAll failed, fallback login', reqErr); try{ liff.login(); }catch(_){} }
+          return;
+        }
+      }
+    }catch(permErr){ console.warn('permission check failed, 繼續送出', permErr); }
     // 0) 同日重複檢查 (建全 2026-06-30)：送出前查當月是否已有同一天的回報
     if (WEBHOOK_URL){
       try{
