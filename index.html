@@ -1245,20 +1245,9 @@ async function submit(){
       try{ if (liff && liff.login) liff.login(); }catch(_){}
       return;
     }
-    // v41 fix (建全): 未授權 chat_message.write 時，sendMessages 會報「403 user doesn't grant required permissions」。
-    //   ⚠️ v40 曾用 requestAll()/login() 自動請求 → 電腦版 LINE 不支援該同意彈窗，會繞成登入迴圈。改為：只偵測+提示，不自動 login。
-    //   放在任何 webhook 寫入之前 → 未授權就 return，不會造成 Sheet 重複列。授權是綁 LINE 帳號，手機授權過電腦即通。
-    try{
-      if (liff.permission && liff.permission.query){
-        const perm = await liff.permission.query('chat_message.write');
-        if (perm && perm.state && perm.state !== 'granted'){
-          restoreBtn();
-          errBox.innerHTML = '⚠️ 尚未授權「傳送訊息」權限，無法送出。<br>' +
-            '<small>請用<b>手機版 LINE</b>開一次這個業績回報、按「允許」授權（只需一次）；之後手機/電腦版都能送出。</small>';
-          return;
-        }
-      }
-    }catch(permErr){ console.warn('permission check failed, 繼續送出', permErr); }
+    // v42 fix (建全): 移除送出前的授權 pre-check ——電腦版 permission.query 會誤判成未授權(狀態跟手機不同)，
+    //   導致擋在存檔前又顯示錯的「請手機授權」。改為不預擋：正常寫入 Sheet(下方 webhook) → 再嘗試 sendMessages，
+    //   電腦版貼不到聊天室時由 catch 顯示「已存入系統，電腦版無法貼聊天室」。資料一定先存檔。
     // 0) 同日重複檢查 (建全 2026-06-30)：送出前查當月是否已有同一天的回報
     if (WEBHOOK_URL){
       try{
