@@ -1216,6 +1216,13 @@ async function submit(){
   errBox.textContent = "";
   try{
     const d = collect();
+    // v38 fix: 送出前確認 LIFF access token 有效，缺失/過期就先重新登入，避免 sendMessages 報
+    //   「UNAUTHORIZED Need access_token, Please login first」。放在任何 webhook 寫入之前 → 重新登入不會造成 Sheet 重複列。
+    if (!liff || !liff.isLoggedIn || !liff.isLoggedIn() || !liff.getAccessToken || !liff.getAccessToken()){
+      errBox.textContent = "LINE 登入狀態已失效，正在重新登入…完成後請再按一次送出。";
+      try{ if (liff && liff.login) liff.login(); }catch(_){}
+      return;
+    }
     // 0) 同日重複檢查 (建全 2026-06-30)：送出前查當月是否已有同一天的回報
     if (WEBHOOK_URL){
       try{
