@@ -433,6 +433,33 @@ function showDupDateWarning(dateStr, dupItem){
   }
 }
 
+// v43 (建全): 同日已由「別人」回報 → 不能直接改別人的，提示請該員工本人或管理員處理
+function showDupOtherWarning(dateStr, dupItem){
+  const who = (dupItem && dupItem.reporter) ? dupItem.reporter : '其他同仁';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;
+    display:flex;align-items:center;justify-content:center;padding:24px
+  `;
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:18px;padding:28px 24px;text-align:center;max-width:340px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,.3)">
+      <div style="font-size:56px;line-height:1;margin-bottom:14px">⚠️</div>
+      <div style="font-size:18px;font-weight:700;color:var(--warn);margin-bottom:6px">同一天已由他人回報</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.6">
+        ${dateStr || ''} 已經由 <b>${who}</b> 回報過了。<br>
+        業績回報每天一筆全店，你<b>不能直接修改別人的回報</b>。<br>
+        如需更正，請 <b>${who}</b> 本人或管理員修改／刪除該筆後再回報。
+      </div>
+      <button type="button" id="dupOtherOkBtn"
+        style="width:100%;padding:13px;background:linear-gradient(135deg,var(--brand),var(--brand-dim));color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;font:inherit;cursor:pointer">
+        我知道了
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#dupOtherOkBtn').addEventListener('click', ()=> overlay.remove());
+}
+
 async function boot(){
   seedMonth();
   document.getElementById('dateText').textContent = STATE.roc;
@@ -1251,16 +1278,19 @@ async function submit(){
     // 0) 同日重複檢查 (建全 2026-06-30)：送出前查當月是否已有同一天的回報
     if (WEBHOOK_URL){
       try{
-        const lr = await fetch(`${WEBHOOK_URL}?action=list&ym=${encodeURIComponent(STATE.ym)}&userId=${encodeURIComponent(profile.userId||'')}`);
+        // v43 (建全): userId 留空 → 後端回傳「全站當月所有人」紀錄，才抓得到別人報過的同一天(業績回報是每日一筆全店)
+        const lr = await fetch(`${WEBHOOK_URL}?action=list&ym=${encodeURIComponent(STATE.ym)}&userId=`);
         const lj = await lr.json();
         // 修改模式：被修改的那筆自己不算重複
         const dupItem = (lj && lj.ok && Array.isArray(lj.items))
           ? lj.items.find(it => it.date === d.date && !(editingRecord && String(it.id) === String(editingRecord.id)))
           : null;
         if (dupItem){
-          // v41 (建全): 同日已有回報 → 跳提示視窗，提供【修改】按鈕帶入該筆進編輯模式 (不自動跳、不是刪除)
+          // v41/v43 (建全): 同日已有回報 → 跳提示；自己的→給【修改】按鈕，別人的→提示請該員工/管理員處理(不能改別人的)
           restoreBtn();
-          showDupDateWarning(d.date, dupItem);
+          const mine = String(dupItem.userId || '') === String(profile.userId || '');
+          if (mine) showDupDateWarning(d.date, dupItem);
+          else showDupOtherWarning(d.date, dupItem);
           return;
         }
       } catch(e){ console.warn('同日檢查失敗，不擋送出', e); }
