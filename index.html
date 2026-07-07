@@ -310,10 +310,11 @@ function updateDate(d){
   document.getElementById('hdrSub').textContent = STATE.roc;
   const di = document.getElementById('dateInput');
   if (di) di.value = STATE.iso;
+  try { validate(); } catch(_) {}   // 立即反灰「讀取中」
   // Refresh muscle pricing (depends on weekday) — but preserve existing input values
   refreshMuscleHints();
-  // Refresh server month
-  fetchMonth(STATE.ym).then(v=>{ if (v != null) serverMonthCache = v; monthLoaded = true; recalc(); });
+  // Refresh server month（讀完 monthLoaded=true → validate 恢復可按）
+  fetchMonth(STATE.ym).then(v=>{ if (v != null) serverMonthCache = v; monthLoaded = true; recalc(); try { validate(); } catch(_) {} });
   recalc();
 }
 
@@ -476,6 +477,7 @@ async function boot(){
   monthLoaded = true;   // v44: 初次載入的當月累積已讀完(成功或失敗都放行)，之後才允許送出
   // Use recalc to update BOTH monthSum and monthHoursSum (bug fix v15)
   recalc();
+  try { validate(); } catch(_) {}   // 讀完 → 送出鈕由「讀取中」恢復
 }
 
 async function initLiff(){
@@ -903,6 +905,12 @@ function refreshMonthly(){
 
 function validate(){
   const btn = document.getElementById('btnSubmit');
+  // 建全 2026-07-07: 當月累積讀取中 → 完全反灰不可按（避免讀取空窗誤送/重複回報）
+  if (!monthLoaded){
+    btn.disabled = true;
+    btn.textContent = "⏳ 讀取當月累積中…";
+    return;
+  }
   const anyMeal = document.querySelectorAll('.meal-tile.on').length > 0;
   const anyPerson = document.querySelectorAll('.person-tile.on').length > 0;
   if (anyMeal && anyPerson){
