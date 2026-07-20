@@ -255,8 +255,12 @@ const MEALS = [
   { key:"lunch",    label:"午餐",   emoji:"🍱", type:"basic" },
   { key:"dinner",   label:"晚餐",   emoji:"🍽️", type:"basic" },
   { key:"muscle",   label:"燃肌餐", emoji:"💪", type:"muscle" },
-  { key:"preorder", label:"預訂餐", emoji:"📦", type:"preorder" }
+  { key:"preorder", label:"預訂餐", emoji:"📦", type:"preorder" },
+  { key:"rotate15a", label:"15A輪動", emoji:"🚚", type:"preorder", price:110 }
 ];
+
+// preorder 型餐別的單價（各餐別可自帶 price，未帶則沿用預訂餐單價）
+function mealPrice(m){ return Number(m && m.price) || PREORDER_PRICE; }
 
 // === Date helpers ===
 function rocFromDate(d){
@@ -566,7 +570,7 @@ function renderMealFields(m){
   }
   if (m.type === 'preorder'){
     return `
-      <div class="small" style="margin-bottom:6px">單價 $${PREORDER_PRICE} / 餐（可手動修正）</div>
+      <div class="small" style="margin-bottom:6px">單價 $${mealPrice(m)} / 餐（可手動修正）</div>
       <div class="row"><label>餐數</label><input type="number" min="0" data-meal="${m.key}" data-k="count" placeholder="0"></div>
       <div class="row">
         <label>營業額</label>
@@ -849,8 +853,8 @@ function recalc(){
       const count = parseInt(cInp.value || "0", 10);
       // If amount was manually overridden, don't recalc
       if (aInp.dataset.manual !== '1'){
-        aInp.value = count * PREORDER_PRICE;
-        aInp.placeholder = String(count * PREORDER_PRICE);
+        aInp.value = count * mealPrice(m);
+        aInp.placeholder = String(count * mealPrice(m));
       }
     }
   });
@@ -1114,8 +1118,9 @@ function startEditRecord(item){
       if (cI) cI.value = me.count || 0;
       if (aI){
         aI.value = me.amount || 0;
-        // 預訂餐若當時手動修正過金額（≠ 餐數×單價），保留手動值不被 recalc 蓋掉
-        if (me.key === 'preorder' && (me.amount || 0) !== (me.count || 0) * PREORDER_PRICE){
+        // 預訂餐型（預訂餐／15A輪動）若當時手動修正過金額（≠ 餐數×單價），保留手動值不被 recalc 蓋掉
+        const meMeta = MEALS.find(x => x.key === me.key);
+        if (meMeta && meMeta.type === 'preorder' && (me.amount || 0) !== (me.count || 0) * mealPrice(meMeta)){
           aI.dataset.manual = '1';
         }
       }
