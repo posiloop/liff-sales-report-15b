@@ -1281,7 +1281,14 @@ async function submit(){
   // v39 (建全): 送出期間鎖住按鈕+反灰讀秒，避免處理延遲那幾秒被重複點擊造成重複回報
   if (btnS){ btnS.disabled = true; btnS.textContent = "⏳ 送出中…請勿重複點擊"; }
   try{
-    const d = collect();
+    // v46 fix (建全 2026-08-12「當月營業額加總又算錯」)：collect() **必須放在下面補讀當月累積之後**。
+    //   舊版在這裡就先 collect()，等於把「當月累積」快照下來；v45 的補讀雖然把 serverMonthCache
+    //   補回來、也 recalc() 更新了畫面，但**沒有重做這份快照**，而貼進 LINE 的文字是用快照做的
+    //   → 累積讀完前按送出，訊息就印成「當日值 + 0」。
+    //   實例：8/12 張弘毅 10:47 補送 8/11、10:52 接著送 8/12（改日期會清空累積重讀），
+    //   訊息印出「當月營業額加總 48,295」＝當日 48,295＋0、「當月總工時 37.5h」＝當日＋0。
+    //   Sheet 沒事（後端自己算），錯的只有訊息。
+    //   ⚠️ 不要把 collect() 移回上面。
     // v38 fix: 送出前確認 LIFF access token 有效，缺失/過期就先重新登入，避免 sendMessages 報
     //   「UNAUTHORIZED Need access_token, Please login first」。放在任何 webhook 寫入之前 → 重新登入不會造成 Sheet 重複列。
     if (!liff || !liff.isLoggedIn || !liff.isLoggedIn() || !liff.getAccessToken || !liff.getAccessToken()){
@@ -1303,6 +1310,8 @@ async function submit(){
       restoreBtn();
       return;
     }
+    // v46: 快照在這裡才做——上面已經確定 serverMonthCache 是後端真值（不是 0、也不是 localStorage）。
+    const d = collect();
     // v42 fix (建全): 移除送出前的授權 pre-check ——電腦版 permission.query 會誤判成未授權(狀態跟手機不同)，
     //   導致擋在存檔前又顯示錯的「請手機授權」。改為不預擋：正常寫入 Sheet(下方 webhook) → 再嘗試 sendMessages，
     //   電腦版貼不到聊天室時由 catch 顯示「已存入系統，電腦版無法貼聊天室」。資料一定先存檔。
